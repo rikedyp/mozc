@@ -106,6 +106,13 @@ constexpr MozcEngineProperty kMozcEngineProperties[] = {
         "_ｱ",
         "katakana_half.png",
     },
+    {
+        commands::APL,
+        "InputMode.APL",
+        "APL",
+        "⍺",
+        "alpha_half.png",  // placeholder until a dedicated APL icon is added
+    },
 };
 
 struct MozcEngineToolProperty {
