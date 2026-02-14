@@ -208,6 +208,7 @@ class Session {
   bool CompositionModeFullASCII(mozc::commands::Command* command);
   bool CompositionModeHalfASCII(mozc::commands::Command* command);
   bool CompositionModeSwitchKanaType(mozc::commands::Command* command);
+  bool CompositionModeAPL(mozc::commands::Command* command);
 
   // Specify the input field type.
   bool SwitchInputFieldType(mozc::commands::Command* command);
@@ -276,6 +277,10 @@ class Session {
   friend class SessionTestPeer;
 
   std::unique_ptr<ImeContext> context_;
+
+  // True while the session is in APL mode.  Set when SWITCH_COMPOSITION_MODE
+  // delivers APL; cleared when any other mode is selected.
+  bool apl_mode_active_ = false;
 
   // Undo stack. *begin is the oldest, and *back is the newest.
   std::deque<std::unique_ptr<ImeContext>> undo_contexts_;
@@ -364,6 +369,12 @@ class Session {
   bool SendKeyPrecompositionState(mozc::commands::Command* command);
   bool SendKeyCompositionState(mozc::commands::Command* command);
   bool SendKeyConversionState(mozc::commands::Command* command);
+
+  // When APL mode is active and the Ctrl shifting key is held, look up the
+  // base key in the APL glyph table and commit the result directly, bypassing
+  // the keymap/composer/converter pipeline.  Returns true if the key was
+  // consumed as an APL glyph.
+  bool TryAplShiftedKey(mozc::commands::Command* command);
 
   bool MoveCursorToEndInternal(mozc::commands::Command* command,
                                bool clear_undo);

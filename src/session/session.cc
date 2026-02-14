@@ -52,6 +52,7 @@
 #include "engine/engine_interface.h"
 #include "protocol/commands.pb.h"
 #include "protocol/config.pb.h"
+#include "session/apl_keymap.h"
 #include "session/ime_context.h"
 #include "session/key_event_transformer.h"
 #include "session/keymap.h"
@@ -294,6 +295,8 @@ bool Session::SendCommand(commands::Command* command) {
     if (!session_command.has_composition_mode()) {
       return false;
     }
+    // Any mode switch clears APL mode; the APL case sets it back.
+    apl_mode_active_ = false;
     switch (session_command.composition_mode()) {
       case commands::DIRECT:
         // TODO(komatsu): Implement here.
@@ -312,6 +315,9 @@ bool Session::SendCommand(commands::Command* command) {
         break;
       case commands::HALF_KATAKANA:
         result = CompositionModeHalfKatakana(command);
+        break;
+      case commands::APL:
+        result = CompositionModeAPL(command);
         break;
       default:
         LOG(ERROR) << "Unknown mode: " << session_command.composition_mode();
@@ -614,6 +620,7 @@ bool Session::SendKeyDirectInputState(commands::Command* command) {
 }
 
 bool Session::SendKeyPrecompositionState(commands::Command* command) {
+  if (TryAplShiftedKey(command)) return true;
   keymap::PrecompositionState::Commands key_command;
   const keymap::KeyMapManager* keymap = &context_->GetKeyMapManager();
   const bool result =
@@ -706,6 +713,7 @@ bool Session::SendKeyPrecompositionState(commands::Command* command) {
 }
 
 bool Session::SendKeyCompositionState(commands::Command* command) {
+  if (TryAplShiftedKey(command)) return true;
   keymap::CompositionState::Commands key_command;
   const keymap::KeyMapManager* keymap = &context_->GetKeyMapManager();
   const bool result =
@@ -845,6 +853,7 @@ bool Session::SendKeyCompositionState(commands::Command* command) {
 }
 
 bool Session::SendKeyConversionState(commands::Command* command) {
+  if (TryAplShiftedKey(command)) return true;
   keymap::ConversionState::Commands key_command;
   const keymap::KeyMapManager* keymap = &context_->GetKeyMapManager();
   const bool result =
@@ -2155,6 +2164,46 @@ bool Session::CompositionModeHalfASCII(commands::Command* command) {
   // The temporary mode should not be overridden.
   SwitchInputMode(transliteration::HALF_ASCII, context_->mutable_composer());
   OutputFromState(command);
+  return true;
+}
+
+bool Session::CompositionModeAPL(commands::Command* command) {
+  command->mutable_output()->set_consumed(true);
+  EnsureIMEIsOn();
+  // Use HALF_ASCII as a passthrough transliteration mode.  APL glyph insertion
+  // bypasses the Composer entirely via TryAplShiftedKey(), so the Composer
+  // mode only matters for non-shifted keystrokes in APL mode.
+  SwitchInputMode(transliteration::HALF_ASCII, context_->mutable_composer());
+  apl_mode_active_ = true;
+  OutputFromState(command);
+  return true;
+}
+
+bool Session::TryAplShiftedKey(commands::Command* command) {
+  if (!apl_mode_active_) return false;
+
+  const commands::KeyEvent& key = command->input().key();
+
+  // Check whether the APL shifting key (Ctrl) is held.
+  bool has_ctrl = false;
+  for (int i = 0; i < key.modifier_keys_size(); ++i) {
+    if (key.modifier_keys(i) == commands::KeyEvent::CTRL) {
+      has_ctrl = true;
+      break;
+    }
+  }
+  if (!has_ctrl || !key.has_key_code()) return false;
+
+  // Look up the APL glyph for this key code.
+  std::optional<absl::string_view> glyph = GetAplGlyph(key.key_code());
+  if (!glyph.has_value()) return false;
+
+  // Direct commit — bypass preedit/conversion/rewriter entirely.
+  commands::Result* result = command->mutable_output()->mutable_result();
+  result->set_type(commands::Result::STRING);
+  result->set_value(std::string(*glyph));
+  result->set_key(std::string(*glyph));
+  command->mutable_output()->set_consumed(true);
   return true;
 }
 

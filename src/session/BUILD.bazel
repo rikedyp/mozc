@@ -45,6 +45,16 @@ load("//bazel:run_build_tool.bzl", "mozc_run_build_tool")
 package(default_visibility = ["//visibility:private"])
 
 mozc_cc_library(
+    name = "apl_keymap",
+    srcs = ["apl_keymap.cc"],
+    hdrs = ["apl_keymap.h"],
+    deps = [
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+mozc_cc_library(
     name = "session",
     srcs = ["session.cc"],
     hdrs = ["session.h"],
@@ -52,6 +62,7 @@ mozc_cc_library(
         "//evaluation/candidates_diff_checker:__pkg__",
     ],
     deps = [
+        ":apl_keymap",
         ":ime_context",
         ":key_event_transformer",
         ":keymap",
