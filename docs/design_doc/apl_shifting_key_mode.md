@@ -128,6 +128,17 @@ enum ModifierKey {
 AltGr arrives as `RIGHT_ALT`. Left/right Ctrl are distinguishable.
 Super/Meta is **not** in the enum — it's typically consumed by the desktop environment.
 
+> **Note on AltGr and XKB**: The `RIGHT_ALT` representation above describes what Mozc
+> sees *if* the keystroke reaches it as a modifier+base_key pair. On Linux, AltGr
+> keystrokes are processed by XKB before IBus. If the active keyboard layout defines
+> AltGr compositions for a key (e.g. AltGr+e → '€' on a Euro layout), XKB resolves
+> the combination into a single character and IBus delivers that character — not a
+> `(RIGHT_ALT, base_key)` pair — to Mozc. The modifier+key_code model assumed here
+> therefore applies only when the XKB layout leaves the relevant AltGr+key combinations
+> unbound. Any AltGr-based shifting implementation must be tested across common keyboard
+> layouts and may require XKB cooperation (e.g. a custom layout that leaves AltGr
+> combinations free for Mozc to handle).
+
 ### Composition Modes
 
 Mozc defines modes in `protocol/commands.proto`:
@@ -306,6 +317,61 @@ bool Session::SendKeyCompositionState(commands::Command* command) {
 This ensures APL shifted keys take priority over normal keymap bindings
 whenever APL mode is active.
 
+### Step 1.3a: Guard `Composer::SetInputMode` for APL mode
+
+**File**: `src/session/session.cc`, `src/session/session.h`
+
+When `SWITCH_COMPOSITION_MODE` arrives with `commands::APL`, the session's existing
+handler calls `Composer::SetInputMode(mode)`. `Composer::SetInputMode()` has explicit
+cases for HIRAGANA, FULL_KATAKANA, HALF_ASCII, etc., but no case for `APL`. Passing
+`APL` reaches the default case, which will either log an error or leave the Composer
+in an undefined transliteration state.
+
+The fix has two parts:
+
+**Part A — Set the Composer to passthrough for APL mode.**
+In the session's composition-mode switching code, intercept APL before the
+`SetInputMode` call and substitute `HALF_ASCII`. HALF_ASCII is a literal-passthrough
+mode that does no transliteration — which is exactly right, since `TryAplShiftedKey()`
+bypasses the Composer entirely for every shifted keystroke anyway.
+
+```cpp
+// In Session::SwitchCompositionMode() (or equivalent):
+if (mode == commands::APL) {
+  apl_mode_active_ = true;
+  composer_.SetInputMode(commands::HALF_ASCII);  // passthrough; APL bypasses Composer
+  return;
+}
+apl_mode_active_ = false;
+composer_.SetInputMode(mode);  // existing path for all other modes
+```
+
+**Part B — Persist APL mode in a dedicated flag.**
+`TryAplShiftedKey()` needs to know whether APL mode is currently active. Rather than
+reading from the incoming `Request` (which reflects the client's per-call request, not
+the session's persisted state), use a dedicated member on `Session` (or `ImeContext`):
+
+```cpp
+// src/session/session.h — add to Session private members:
+bool apl_mode_active_ = false;
+```
+
+Replace the `composition_mode()` check in `TryAplShiftedKey()` with this flag:
+
+```cpp
+bool Session::TryAplShiftedKey(commands::Command* command) {
+  if (!apl_mode_active_) return false;
+  // ... rest unchanged ...
+}
+```
+
+**Files changed** (additions to the Phase 1 table):
+
+| File | Change |
+|------|--------|
+| `src/session/session.h` | Add `apl_mode_active_` member |
+| `src/session/session.cc` | Guard `SetInputMode` for APL; set/clear `apl_mode_active_` in mode-switch handler; use flag in `TryAplShiftedKey()` |
+
 ### Step 1.4: Add APL mode to the IBus property menu
 
 **File**: `src/unix/ibus/property_handler.cc`
@@ -356,8 +422,8 @@ Test manually:
 | `src/protocol/commands.proto` | Add `APL = 6` to `CompositionMode` |
 | `src/session/apl_keymap.h` | New: APL glyph lookup |
 | `src/session/apl_keymap.cc` | New: APL glyph table |
-| `src/session/session.h` | Declare `TryAplShiftedKey()` |
-| `src/session/session.cc` | Implement `TryAplShiftedKey()`, call from state handlers |
+| `src/session/session.h` | Declare `TryAplShiftedKey()`; add `apl_mode_active_` member |
+| `src/session/session.cc` | Implement `TryAplShiftedKey()`, call from state handlers; guard `SetInputMode` for APL in mode-switch handler |
 | `src/session/BUILD.bazel` | Add `apl_keymap` target |
 | `src/unix/ibus/property_handler.cc` | Add APL menu item and handler |
 | `src/unix/ibus/property_handler.h` | Add APL property member |
