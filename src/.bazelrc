@@ -72,3 +72,6 @@ test:windows_env   --test_tag_filters=-nowin
 build:android_env --copt "-DOS_ANDROID"
 build:android_env --build_tag_filters=-noandroid
 test:android_env  --test_tag_filters=-noandroid
+
+# Caching
+build --disk_cache=~/.cache/bazel-disk-cache

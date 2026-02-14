@@ -34,6 +34,14 @@ Key components for APL adaptation:
 
 Python helper: `src/build_mozc.py`
 
+Canonical build command (from `src/`):
+```sh
+bazelisk build package --config oss_linux --config release_build
+```
+Then install with `bash install.sh` (from `src/`).
+
+Note: `--config release_build` sets `--compilation_mode=opt` **and** `-DABSL_MIN_LOG_LEVEL=100`, which compiles out ALL `LOG()` / `ABSL_LOG()` calls. For debug builds with logging, omit `--config release_build`.
+
 > **IMPORTANT — Claude must never run the build.** Builds are slow. Always stop and ask the user to build, then wait for them to report the result before continuing.
 
 ## Key Files for APL Work
