@@ -2197,6 +2197,16 @@ bool Session::TryAplShiftedKey(commands::Command* command) {
 
   const commands::KeyEvent& key = command->input().key();
 
+  // Diagnostic: log every key seen in APL mode so we can confirm the function
+  // is reached and see what modifiers/key_code arrive.
+  LOG(INFO) << "[APL] TryAplShiftedKey: key_code=" << key.key_code()
+            << " has_key_code=" << key.has_key_code()
+            << " modifier_keys_size=" << key.modifier_keys_size();
+  for (int i = 0; i < key.modifier_keys_size(); ++i) {
+    LOG(INFO) << "[APL]   modifier[" << i << "]=" << key.modifier_keys(i)
+              << " (CTRL=" << commands::KeyEvent::CTRL << ")";
+  }
+
   // Check whether the APL shifting key (Ctrl) is held.
   bool has_ctrl = false;
   for (int i = 0; i < key.modifier_keys_size(); ++i) {
@@ -2205,7 +2215,13 @@ bool Session::TryAplShiftedKey(commands::Command* command) {
       break;
     }
   }
-  if (!has_ctrl || !key.has_key_code()) return false;
+  if (!has_ctrl || !key.has_key_code()) {
+    LOG(INFO) << "[APL] TryAplShiftedKey: no CTRL or no key_code — returning false";
+    return false;
+  }
+
+  LOG(INFO) << "[APL] TryAplShiftedKey: CTRL detected, looking up key_code="
+            << key.key_code() << " (char='" << static_cast<char>(key.key_code()) << "')";
 
   // Look up the APL glyph for this key code.
   std::optional<absl::string_view> glyph = GetAplGlyph(key.key_code());
