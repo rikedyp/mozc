@@ -2180,6 +2180,15 @@ bool Session::CompositionModeAPL(commands::Command* command) {
   SwitchInputMode(transliteration::HALF_ASCII, context_->mutable_composer());
   apl_mode_active_ = true;
   OutputFromState(command);
+  // OutputMode() derives the reported mode from the Composer's transliteration
+  // state (HALF_ASCII), which would make the IBus property handler show "_A"
+  // instead of "⍺".  Override all three mode fields to report APL externally.
+  commands::Output* out = command->mutable_output();
+  out->set_mode(commands::APL);
+  if (out->has_status()) {
+    out->mutable_status()->set_mode(commands::APL);
+    out->mutable_status()->set_comeback_mode(commands::APL);
+  }
   return true;
 }
 
