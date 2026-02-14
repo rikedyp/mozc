@@ -30,20 +30,11 @@ Key components for APL adaptation:
 
 ## Build System
 
-**Bazel** (primary). Key commands run from `src/`:
-
-```sh
-# Build the Linux IBus component
-bazel build unix/ibus:ibus_mozc
-
-# Run all tests
-bazel test ...
-
-# Build everything
-bazel build ...
-```
+**Bazel** (primary). Key commands run from `src/`.
 
 Python helper: `src/build_mozc.py`
+
+> **IMPORTANT — Claude must never run the build.** Builds are slow. Always stop and ask the user to build, then wait for them to report the result before continuing.
 
 ## Key Files for APL Work
 
