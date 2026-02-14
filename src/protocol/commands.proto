@@ -54,7 +54,8 @@ enum CompositionMode {
   HALF_ASCII = 3;
   FULL_ASCII = 4;
   HALF_KATAKANA = 5;
-  NUM_OF_COMPOSITIONS = 6;
+  APL = 6;                 // APL shifting-key input mode
+  NUM_OF_COMPOSITIONS = 7; // was 6
 }
 
 message KeyEvent {
