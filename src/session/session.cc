@@ -101,6 +101,10 @@ void ApplyCompositionMode(const commands::CompositionMode mode,
     case commands::HALF_ASCII:
       SwitchInputMode(transliteration::HALF_ASCII, composer);
       break;
+    case commands::APL:
+      // APL mode uses HALF_ASCII as its internal transliteration passthrough.
+      SwitchInputMode(transliteration::HALF_ASCII, composer);
+      break;
     default:
       LOG(DFATAL) << "ime on with invalid mode";
   }
