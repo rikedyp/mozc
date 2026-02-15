@@ -8,4 +8,5 @@ sudo cp -r /tmp/mozc-install/usr/share/ibus-mozc/* /usr/share/ibus-mozc/
 sudo cp -r /tmp/mozc-install/usr/share/icons/mozc/* /usr/share/icons/mozc/
 ibus write-cache
 ibus restart
+killall mozc_server 2>/dev/null
 ibus-setup

@@ -456,6 +456,13 @@ verification stage is needed.
 **Platform**: Linux / Wayland / KDE
 **Build**: `bazelisk build package --config oss_linux` (debug/fastbuild)
 
+> **Note on testing after rebuild**: `install.sh` restarts `ibus-engine-mozc`
+> (the IBus frontend) but not `mozc_server` (the session/converter daemon).
+> Since session-level changes (e.g. `OutputMode`, `TryAplShiftedKey`,
+> `apl_mode_active_`) run inside `mozc_server`, a stale server process will
+> mask any changes. After installing, run `killall mozc_server` — it will
+> relaunch automatically on the next keystroke.
+
 Phase 1 is complete. Ctrl+key input successfully produces APL glyphs when the
 IME is in APL mode. End-to-end verification confirmed on Linux/Wayland/KDE.
 
