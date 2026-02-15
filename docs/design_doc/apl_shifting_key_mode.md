@@ -483,6 +483,30 @@ IME is in APL mode. End-to-end verification confirmed on Linux/Wayland/KDE.
    false, `TryAplShiftedKey()` returns early and Ctrl events pass through to
    the application unhandled.
 
+4. **Ctrl+key input does not work in VSCode (Electron/Chromium apps).**
+   APL glyphs are produced correctly in native applications (e.g. Kate) but
+   not in VSCode. Clicking into a VSCode editor also causes the Mozc mode
+   indicator to revert to Latin.
+
+   **Root cause**: Electron (Chromium) intercepts Ctrl+key combinations at
+   the application level — before they reach IBus. VSCode has extensive
+   Ctrl+key bindings (Ctrl+C, Ctrl+V, Ctrl+S, Ctrl+A, Ctrl+P, etc.) that
+   are handled internally and never forwarded to the IME. Native toolkit
+   apps like Kate process IBus input at a lower level and pass keys to the
+   IME first.
+
+   This is a fundamental limitation of using Ctrl as the shifting key in
+   Electron-based applications. It also affects any other application that
+   aggressively consumes Ctrl+key at the application layer.
+
+   **Implication**: Ctrl alone is not viable as the default APL shifting key
+   if Electron apps are a target environment. AltGr (Right Alt) is the most
+   promising alternative — it is the traditional APL modifier on Linux, is
+   unused by most applications including Electron, and is already supported
+   in the IBus key event pipeline as `RIGHT_ALT` (see the modifier key
+   analysis above). Step 2.3 (configurable shifting key) becomes higher
+   priority in light of this finding.
+
 **Pending verification:**
 
 - Ride (Dyalog APL IDE) — to be tested; may have its own key-event handling
