@@ -451,10 +451,85 @@ work would be adding the "APL" menu item to fcitx's mode UI, which is a small
 task in the fcitx-mozc frontend code (out of scope for this repo). No separate
 verification stage is needed.
 
+### Phase 1 Result — Verified ✓
+
+**Platform**: Linux / Wayland / KDE
+**Build**: `bazelisk build package --config oss_linux` (debug/fastbuild)
+
+Phase 1 is complete. Ctrl+key input successfully produces APL glyphs when the
+IME is in APL mode. End-to-end verification confirmed on Linux/Wayland/KDE.
+
+**Issues found during testing:**
+
+1. **Taskbar icon shows "_A" instead of the APL glyph.** The IBus panel label
+   for APL mode is rendering incorrectly. Likely a string or lookup issue in
+   `UpdateCompositionModeIcon()`.
+   
+2. **Autocomplete popup appears during normal (unshifted) typing.** Keystrokes
+   without Ctrl pass through as HALF_ASCII text and trigger Mozc's
+   suggestion/prediction UI. This is distracting in APL mode, where users are
+   not composing Japanese text.
+
+3. **APL mode reverts to Latin after autocomplete interaction.** Reproduction:
+   - Type a key that opens the autocomplete popup (e.g. `+` or `=`)
+   - Press Enter (commits or dismisses the popup)
+   - Press `Ctrl =` → produces `÷` correctly
+   - Press `Ctrl =` again → **fails**: Mozc has reverted to Latin mode; Ctrl
+     combinations now perform application shortcuts (e.g. Ctrl+A → select all,
+     Ctrl+= → zoom in)
+
+   Likely cause: the Enter keypress while the popup is visible triggers a
+   session state transition that clears `apl_mode_active_`. Once that flag is
+   false, `TryAplShiftedKey()` returns early and Ctrl events pass through to
+   the application unhandled.
+
+**Pending verification:**
+
+- Ride (Dyalog APL IDE) — to be tested; may have its own key-event handling
+  that warrants separate investigation
+- macOS — to be tested (see Phase 3)
+- Windows — to be tested (see Phase 3)
+
 Phase 2: Polish and Configuration
 ----------------------------------
 
-### Step 2.1: Configurable shifting key
+### Step 2.0: Fix taskbar icon
+
+*Priority: first task in Phase 2.*
+
+**File**: `src/unix/ibus/property_handler.cc`
+
+The IBus panel currently displays "_A" for APL mode instead of the intended
+glyph or label. Investigate `UpdateCompositionModeIcon()` and the property
+definition for `"InputMode.APL"` to identify the formatting or lookup error
+and correct the displayed label/icon.
+
+### Step 2.1: Suppress autocomplete in APL mode
+
+**Files**: `src/session/session.cc` and/or `src/converter/converter.cc`
+
+While `apl_mode_active_` is true, Mozc should not display the candidate/
+suggestion window for unshifted keystrokes. Options:
+
+- Set the `Request` to disable suggestion/prediction when entering APL mode.
+- In the state handlers, skip the conversion step and emit a direct result for
+  unshifted keys in APL mode (treating them as immediate HALF_ASCII commit).
+- Filter candidates in the output before returning to the client.
+
+### Step 2.2: Fix APL mode persistence through Enter / preedit commit
+
+**File**: `src/session/session.cc`
+
+Diagnose and fix the state transition that clears `apl_mode_active_` when the
+user presses Enter while the autocomplete popup is open. `apl_mode_active_`
+should persist until the user explicitly switches away from APL mode; no
+internal event (preedit commit, candidate selection, Enter) should clear it.
+
+Review all `apl_mode_active_ = false` assignments and every
+`SWITCH_COMPOSITION_MODE` path to ensure none are reachable during normal APL
+typing.
+
+### Step 2.3: Configurable shifting key
 
 Add a config option (`protocol/config.proto`) to select the APL shifting key:
 
@@ -470,7 +545,7 @@ optional AplShiftingKey apl_shifting_key = N [default = APL_SHIFT_CTRL];
 Update `TryAplShiftedKey()` to check the configured modifier instead of
 hardcoding Ctrl.
 
-### Step 2.2: Ctrl+Shift for shifted APL glyphs
+### Step 2.4: Ctrl+Shift for shifted APL glyphs
 
 Many APL keyboards have a second layer accessed via Ctrl+Shift (or APL+Shift).
 Add a second lookup table for shifted glyphs:
@@ -481,12 +556,12 @@ Ctrl+Shift+W → ⍹ (omega underbar)
 ...
 ```
 
-### Step 2.3: Complete the glyph table
+### Step 2.5: Complete the glyph table
 
 Fill out the full APL keyboard layout covering all standard glyphs. Reference
 layouts: Dyalog US, GNU APL, IBM APL2.
 
-### Step 2.4: Externalize the glyph table
+### Step 2.6: Externalize the glyph table
 
 Move the glyph mapping from C++ code to a data file
 (e.g., `src/data/apl/apl_keyboard.tsv`) so it can be edited without
@@ -502,7 +577,7 @@ ctrl+shift	a	⍶	alpha underbar
 
 Load this in `Table` or a new `AplTable` class at startup.
 
-### Step 2.5: Handle preedit interaction
+### Step 2.7: Handle preedit interaction
 
 When the user presses Ctrl+A while there is uncommitted preedit text:
 - Option A: Commit preedit first, then insert APL glyph
@@ -512,13 +587,20 @@ When the user presses Ctrl+A while there is uncommitted preedit text:
 Option A is most intuitive. Implement by calling `CommitPreedit()` before
 inserting the APL result.
 
-### Step 2.6: Visual feedback
+### Step 2.8: Visual feedback
 
 When in APL mode, show "APL" in the language bar with a distinctive icon.
 Consider showing the APL keyboard layout as a tooltip or floating window.
 
 Phase 3: Cross-Platform Support
 --------------------------------
+
+### Step 3.0: Ride (Dyalog APL IDE) verification
+
+Ride is the primary IDE for Dyalog APL and a key target environment for this
+feature. Ride may have its own key-event interception or virtual-keyboard layer
+that warrants investigation separately from generic Linux apps. Test the full
+Ctrl+key layout inside Ride on Linux before proceeding to other platforms.
 
 ### Step 3.1: Windows (TSF/IMM32)
 
@@ -628,13 +710,9 @@ real-time as modifier keys are pressed/released. This is a renderer feature
 Summary of Phases
 -----------------
 
-| Phase | Scope | Platform | Key Deliverable |
-|-------|-------|----------|-----------------|
-| 1 | Minimal POC | Linux | Ctrl+key → APL glyph via IBus |
-| 2 | Polish | Linux | Config, full layout, Shift layer, data file |
-| 3 | Cross-platform | Win/Mac | TSF + IMK integration, shared session |
-| 4 | Advanced | All | Keyword search, idioms, composition, overlay |
-
-Phase 1 touches ~8 files and can be verified with a single build-and-test
-cycle. Each subsequent phase builds on the prior without requiring
-architectural changes.
+| Phase | Scope | Platform | Status | Key Deliverable |
+|-------|-------|----------|--------|-----------------|
+| 1 | Minimal POC | Linux | **Done** (2026-02-15) | Ctrl+key → APL glyph via IBus/Wayland/KDE |
+| 2 | Polish | Linux | In progress | Icon fix, autocomplete suppression, mode persistence, full layout, config |
+| 3 | Cross-platform | Win/Mac/Ride | Pending | TSF + IMK integration, Ride verification |
+| 4 | Advanced | All | Pending | Keyword search, idioms, composition, overlay |
