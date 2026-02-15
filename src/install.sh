@@ -6,3 +6,6 @@ sudo install -m 755 /tmp/mozc-install/usr/lib/ibus-mozc/ibus-engine-mozc /usr/li
 sudo install -m 644 /tmp/mozc-install/usr/share/ibus/component/mozc.xml /usr/share/ibus/component/mozc.xml
 sudo cp -r /tmp/mozc-install/usr/share/ibus-mozc/* /usr/share/ibus-mozc/
 sudo cp -r /tmp/mozc-install/usr/share/icons/mozc/* /usr/share/icons/mozc/
+ibus write-cache
+ibus restart
+ibus-setup
