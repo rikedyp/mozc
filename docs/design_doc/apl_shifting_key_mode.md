@@ -490,6 +490,44 @@ IME is in APL mode. End-to-end verification confirmed on Linux/Wayland/KDE.
 - macOS — to be tested (see Phase 3)
 - Windows — to be tested (see Phase 3)
 
+### Architecture note: HALF_ASCII as the underlying transliteration mode
+
+The APL shifting-key mode sets the Composer's transliteration mode to
+`HALF_ASCII` rather than introducing a new `TransliterationType`. This was
+evaluated and deemed appropriate because:
+
+- The `TransliterationType` enum is used as array indices, in toggle/cycle
+  functions, and throughout the transliteration pipeline. Adding an APL entry
+  would be invasive and gain nothing — shifting-key input has no
+  composition/transliteration semantics.
+- `TryAplShiftedKey()` deliberately bypasses the Composer/Converter pipeline.
+  The Composer mode only matters for unshifted keystrokes, where HALF_ASCII
+  passthrough is the correct behaviour.
+- A session-level `apl_mode_active_` flag tracks APL state independently, and
+  `OutputMode()` overrides the reported `CompositionMode` to `APL` so the
+  property handler and IBus panel display the correct icon/label.
+
+If a future APL input method requires actual transliteration (e.g. keyword
+composition or overstrike), adding a first-class `TransliterationType` should
+be reconsidered at that point.
+
+### Early-access distribution milestone
+
+**Goal**: Produce installable packages for Linux, macOS, and Windows containing
+only the shifting-key input method (Ctrl+key → APL glyph). These will be
+distributed to a small group of testers to surface platform-specific issues as
+early as possible.
+
+**Scope**: The installers need not be feature-complete. The minimum bar is:
+
+- Switching to APL mode via the input method menu
+- Ctrl+key producing the correct APL glyph
+- Stable icon/label in the system tray
+- No regressions to normal (non-APL) IME operation
+
+Configurability (choice of shifting key, custom glyph table) is desirable but
+not required for the first distribution.
+
 Phase 2: Polish and Configuration
 ----------------------------------
 
