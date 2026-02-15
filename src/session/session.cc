@@ -2792,10 +2792,16 @@ void Session::Output(commands::Command* command) {
 }
 
 void Session::OutputMode(commands::Command* command) const {
+  // While APL mode is active the underlying Composer transliteration mode is
+  // HALF_ASCII, but we must report APL to the property handler so the taskbar
+  // icon stays on "⍺" rather than reverting to "_A" on every keystroke.
   const commands::CompositionMode mode =
-      ToCompositionMode(context_->composer().GetInputMode());
+      apl_mode_active_ ? commands::APL
+                       : ToCompositionMode(context_->composer().GetInputMode());
   const commands::CompositionMode comeback_mode =
-      ToCompositionMode(context_->composer().GetComebackInputMode());
+      apl_mode_active_ ? commands::APL
+                       : ToCompositionMode(
+                             context_->composer().GetComebackInputMode());
 
   commands::Output* output = command->mutable_output();
   commands::Status* status = output->mutable_status();
