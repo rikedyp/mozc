@@ -374,6 +374,9 @@ bool MozcEngine::ProcessKeyEvent(IbusEngineWrapper *engine, uint keyval,
                                  uint keycode, uint modifiers) {
   MOZC_VLOG(2) << "keyval: " << keyval << ", keycode: " << keycode
                << ", modifiers: " << modifiers;
+  // TEMP: log all key events to file for debugging Ctrl+key interception
+  { FILE* f = fopen("/tmp/mozc_keylog.txt", "a");
+    if (f) { fprintf(f, "keyval=%u keycode=%u mod=%u\n", keyval, keycode, modifiers); fclose(f); } }
   if (property_handler_->IsDisabled()) {
     return false;
   }

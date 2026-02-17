@@ -495,24 +495,43 @@ IME is in APL mode. End-to-end verification confirmed on Linux/Wayland/KDE.
    not in VSCode. Clicking into a VSCode editor also causes the Mozc mode
    indicator to revert to Latin.
 
-   **Root cause**: Electron (Chromium) intercepts Ctrl+key combinations at
-   the application level — before they reach IBus. VSCode has extensive
-   Ctrl+key bindings (Ctrl+C, Ctrl+V, Ctrl+S, Ctrl+A, Ctrl+P, etc.) that
-   are handled internally and never forwarded to the IME. Native toolkit
-   apps like Kate process IBus input at a lower level and pass keys to the
-   IME first.
+   **Initial hypothesis (INCORRECT)**: Electron (Chromium) intercepts
+   Ctrl+key combinations at the application level before they reach IBus.
 
-   This is a fundamental limitation of using Ctrl as the shifting key in
-   Electron-based applications. It also affects any other application that
-   aggressively consumes Ctrl+key at the application layer.
+   **Actual root cause**: Verified via file-based logging in
+   `MozcEngine::ProcessKeyEvent()` that Ctrl+key events **do reach Mozc**
+   in VSCode — the IBus key event contains `keyval=97 mod=4` (Ctrl+A),
+   identical to what Kate sends. The problem is that Mozc returns `false`
+   (event not consumed) because `apl_mode_active_` has already been cleared
+   by the time the keystroke arrives.
 
-   **Implication**: Ctrl alone is not viable as the default APL shifting key
-   if Electron apps are a target environment. AltGr (Right Alt) is the most
-   promising alternative — it is the traditional APL modifier on Linux, is
-   unused by most applications including Electron, and is already supported
-   in the IBus key event pipeline as `RIGHT_ALT` (see the modifier key
-   analysis above). Step 2.3 (configurable shifting key) becomes higher
-   priority in light of this finding.
+   The mode reset happens during the Enable/FocusIn cycle triggered by
+   switching to Mozc (Win+Space) or clicking into a VSCode editor:
+
+   1. `MozcEngine::Enable()` reads the composition mode from `ibus_config_`
+      (the IBus XML config). `ConvertCompositionMode()` has no case for APL,
+      so it returns `NUM_OF_COMPOSITIONS` and the "Do nothing" branch is
+      taken — but `Enable()` also sends `TURN_ON_IME`, which resets the
+      session to its default mode (HIRAGANA).
+   2. `MozcEngine::FocusIn()` calls `property_handler_->Register()`, which
+      rebuilds the IBus property panel using `original_composition_mode_`
+      (initialized to `commands::HIRAGANA`).
+   3. The session's `apl_mode_active_` flag is cleared by the mode switch,
+      so subsequent Ctrl+key events fall through `TryAplShiftedKey()` and
+      are passed to the application unhandled.
+
+   This is the same underlying issue as #3 (APL mode reverts after
+   autocomplete) — `apl_mode_active_` does not survive state transitions
+   triggered by Enable, FocusIn, or preedit commit.
+
+   **Implication**: The fix requires making APL mode persist across
+   Enable/FocusIn cycles. Options include: (a) adding APL to
+   `ConvertCompositionMode()` and the IBus config so `Enable()` can
+   restore it, (b) persisting `apl_mode_active_` in the session so it
+   survives `TURN_ON_IME`, or (c) having the property handler track and
+   restore APL mode through `Register()` calls. This is a tractable
+   fix within the existing architecture — Ctrl as a shifting key is NOT
+   fundamentally blocked by Electron/Chromium.
 
 **Pending verification:**
 
