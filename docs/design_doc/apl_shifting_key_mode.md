@@ -588,19 +588,7 @@ property handler the correct symbol ("⍺") and icon for APL mode. The "_A"
 display was caused by the property handler falling through to the HALF_ASCII
 entry (symbol "_A") because no APL entry existed.
 
-### Step 2.1: Suppress autocomplete in APL mode
-
-**Files**: `src/session/session.cc` and/or `src/converter/converter.cc`
-
-While `apl_mode_active_` is true, Mozc should not display the candidate/
-suggestion window for unshifted keystrokes. Options:
-
-- Set the `Request` to disable suggestion/prediction when entering APL mode.
-- In the state handlers, skip the conversion step and emit a direct result for
-  unshifted keys in APL mode (treating them as immediate HALF_ASCII commit).
-- Filter candidates in the output before returning to the client.
-
-### Step 2.2: Fix APL mode persistence (full IBus integration)
+### Step 2.1: Fix APL mode persistence (full IBus integration)
 
 **Problem**: APL mode does not survive Enable/FocusIn cycles, autocomplete
 commits, or focus changes between applications. The `apl_mode_active_` flag
@@ -615,7 +603,7 @@ handle Hiragana, Katakana, etc. The session/composer layer continues to use
 HALF_ASCII internally for transliteration (no change needed there — see the
 architecture note above).
 
-#### Step 2.2a: Add APL to the IBus config proto
+#### Step 2.1a: Add APL to the IBus config proto
 
 **File**: `src/unix/ibus/ibus_config.proto`
 
@@ -637,7 +625,7 @@ enum CompositionMode {
 This allows the IBus config to store APL as the engine's composition mode,
 so `Enable()` can restore it on focus/switch.
 
-#### Step 2.2b: Add APL to `ConvertCompositionMode()`
+#### Step 2.1b: Add APL to `ConvertCompositionMode()`
 
 **File**: `src/unix/ibus/mozc_engine.cc`
 
@@ -652,7 +640,7 @@ Without this, `Enable()` sees APL as `NUM_OF_COMPOSITIONS` and takes the
 "Do nothing" branch, then falls through to HIRAGANA via subsequent state
 transitions.
 
-#### Step 2.2c: Add APL to `kMozcEngineProperties`
+#### Step 2.1c: Add APL to `kMozcEngineProperties`
 
 **File**: `src/unix/ibus/property_handler.cc`
 
@@ -678,7 +666,7 @@ This also fixes **Issue #1** (taskbar icon shows "_A" instead of APL
 glyph), since the property handler will now match `commands::APL` to the
 correct entry instead of falling through to the HALF_ASCII entry.
 
-#### Step 2.2d: Ensure session preserves `apl_mode_active_` through `TURN_ON_IME`
+#### Step 2.1d: Ensure session preserves `apl_mode_active_` through `TURN_ON_IME`
 
 **File**: `src/session/session.cc`
 
@@ -747,11 +735,11 @@ This fixes **Issue #3** (APL mode reverts after autocomplete) and
 `src/unix/ibus/mozc_engine.cc` line 378 (`fopen("/tmp/mozc_keylog.txt")`).
 This was added during debugging and must not ship.
 
-#### Step 2.2e: Ensure `OutputMode()` reports APL to the property handler
+#### Step 2.1e: Ensure `OutputMode()` reports APL to the property handler
 
 Already implemented in Phase 1 — `OutputMode()` overrides the reported
 `CompositionMode` to `APL` when `apl_mode_active_` is true. With
-Step 2.2c in place, the property handler will now correctly match this
+Step 2.1c in place, the property handler will now correctly match this
 to the APL entry and display "⍺" in the panel.
 
 Verify that `property_handler_->Update()` (called from `Enable()` and
@@ -759,7 +747,7 @@ key event handlers) correctly propagates the APL mode through
 `original_composition_mode_` so it survives subsequent `Register()` calls
 during FocusIn.
 
-#### Files changed in Step 2.2
+#### Files changed in Step 2.1
 
 | File | Change |
 |------|--------|
@@ -777,6 +765,18 @@ After this change:
   clear APL mode
 - The taskbar icon shows "⍺" when APL mode is active
 - Ctrl+key produces APL glyphs in VSCode and all other applications
+
+### Step 2.2: Suppress autocomplete in APL mode
+
+**Files**: `src/session/session.cc` and/or `src/converter/converter.cc`
+
+While `apl_mode_active_` is true, Mozc should not display the candidate/
+suggestion window for unshifted keystrokes. Options:
+
+- Set the `Request` to disable suggestion/prediction when entering APL mode.
+- In the state handlers, skip the conversion step and emit a direct result for
+  unshifted keys in APL mode (treating them as immediate HALF_ASCII commit).
+- Filter candidates in the output before returning to the client.
 
 ### Step 2.3: Configurable shifting key
 
