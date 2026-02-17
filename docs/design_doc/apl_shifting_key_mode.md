@@ -583,14 +583,10 @@ Phase 2: Polish and Configuration
 
 ### Step 2.0: Fix taskbar icon
 
-*Priority: first task in Phase 2.*
-
-**File**: `src/unix/ibus/property_handler.cc`
-
-The IBus panel currently displays "_A" for APL mode instead of the intended
-glyph or label. Investigate `UpdateCompositionModeIcon()` and the property
-definition for `"InputMode.APL"` to identify the formatting or lookup error
-and correct the displayed label/icon.
+*Subsumed by Step 2.2c.* Adding APL to `kMozcEngineProperties` gives the
+property handler the correct symbol ("⍺") and icon for APL mode. The "_A"
+display was caused by the property handler falling through to the HALF_ASCII
+entry (symbol "_A") because no APL entry existed.
 
 ### Step 2.1: Suppress autocomplete in APL mode
 
@@ -604,18 +600,183 @@ suggestion window for unshifted keystrokes. Options:
   unshifted keys in APL mode (treating them as immediate HALF_ASCII commit).
 - Filter candidates in the output before returning to the client.
 
-### Step 2.2: Fix APL mode persistence through Enter / preedit commit
+### Step 2.2: Fix APL mode persistence (full IBus integration)
+
+**Problem**: APL mode does not survive Enable/FocusIn cycles, autocomplete
+commits, or focus changes between applications. The `apl_mode_active_` flag
+in the session gets cleared whenever a `TURN_ON_IME` or
+`SWITCH_COMPOSITION_MODE` command arrives with a non-APL mode. This happens
+because the IBus frontend layer has no awareness of APL as a composition mode
+— it falls through to defaults (HIRAGANA) during Enable and FocusIn.
+
+**Approach**: Make APL a first-class composition mode throughout the IBus
+frontend, so it is preserved and restored by the same mechanisms that already
+handle Hiragana, Katakana, etc. The session/composer layer continues to use
+HALF_ASCII internally for transliteration (no change needed there — see the
+architecture note above).
+
+#### Step 2.2a: Add APL to the IBus config proto
+
+**File**: `src/unix/ibus/ibus_config.proto`
+
+Add `APL = 6` to `Engine.CompositionMode`:
+
+```protobuf
+enum CompositionMode {
+  DIRECT = 0;
+  HIRAGANA = 1;
+  FULL_KATAKANA = 2;
+  HALF_ASCII = 3;
+  FULL_ASCII = 4;
+  HALF_KATAKANA = 5;
+  APL = 6;        // NEW
+  NONE = 100;
+}
+```
+
+This allows the IBus config to store APL as the engine's composition mode,
+so `Enable()` can restore it on focus/switch.
+
+#### Step 2.2b: Add APL to `ConvertCompositionMode()`
+
+**File**: `src/unix/ibus/mozc_engine.cc`
+
+Add the APL case to the switch in `ConvertCompositionMode()`:
+
+```cpp
+case ibus::Engine::APL:
+  return commands::APL;
+```
+
+Without this, `Enable()` sees APL as `NUM_OF_COMPOSITIONS` and takes the
+"Do nothing" branch, then falls through to HIRAGANA via subsequent state
+transitions.
+
+#### Step 2.2c: Add APL to `kMozcEngineProperties`
+
+**File**: `src/unix/ibus/property_handler.cc`
+
+Add an APL entry to the `kMozcEngineProperties` array:
+
+```cpp
+{
+    commands::APL,
+    "InputMode.APL",
+    "APL",
+    "⍺",              // panel symbol (APL alpha)
+    "apl.png",        // icon (create or reuse existing)
+},
+```
+
+This gives APL a menu item in the IBus panel, a display symbol ("⍺"), and
+ensures `AppendCompositionPropertyToPanel()` and
+`UpdateCompositionModeIcon()` handle it correctly. The existing code
+iterates `kMozcEngineProperties` to build the radio menu and update the
+panel — adding an entry here is sufficient for both.
+
+This also fixes **Issue #1** (taskbar icon shows "_A" instead of APL
+glyph), since the property handler will now match `commands::APL` to the
+correct entry instead of falling through to the HALF_ASCII entry.
+
+#### Step 2.2d: Ensure session preserves `apl_mode_active_` through `TURN_ON_IME`
 
 **File**: `src/session/session.cc`
 
-Diagnose and fix the state transition that clears `apl_mode_active_` when the
-user presses Enter while the autocomplete popup is open. `apl_mode_active_`
-should persist until the user explicitly switches away from APL mode; no
-internal event (preedit commit, candidate selection, Enter) should clear it.
+There are two code paths that affect `apl_mode_active_`:
 
-Review all `apl_mode_active_ = false` assignments and every
-`SWITCH_COMPOSITION_MODE` path to ensure none are reachable during normal APL
-typing.
+**Path 1 — `SWITCH_COMPOSITION_MODE` handler (line ~298)**
+
+```cpp
+// Any mode switch clears APL mode; the APL case sets it back.
+apl_mode_active_ = false;                              // line 303
+switch (session_command.composition_mode()) {
+  ...
+  case commands::APL:
+    result = CompositionModeAPL(command);               // sets apl_mode_active_ = true at line 2181
+    break;
+  ...
+}
+```
+
+This is correct — an explicit user mode switch clears APL, and switching
+*to* APL sets it back via `CompositionModeAPL()`.
+
+**Path 2 — `MakeSureIMEOn()` (line ~1063), called by `TURN_ON_IME`**
+
+```cpp
+bool Session::MakeSureIMEOn(commands::Command* command) {
+  ...
+  if (command->input().has_command() &&
+      command->input().command().has_composition_mode()) {
+    ApplyCompositionMode(command->input().command().composition_mode(),
+                         context_->mutable_composer());   // line 1078
+  }
+  OutputMode(command);                                     // line 1081
+  return true;
+}
+```
+
+This is the **problematic path**. When `Enable()` sends `TURN_ON_IME`
+with `composition_mode = HIRAGANA`, `ApplyCompositionMode()` switches
+the composer to HIRAGANA transliteration — but does NOT touch
+`apl_mode_active_`. However, `ApplyCompositionMode` for `commands::APL`
+(line ~104) does set the composer to HALF_ASCII but also does NOT set
+`apl_mode_active_ = true`. And `OutputMode()` reads the composer's
+transliteration state (now HIRAGANA), overriding the APL status.
+
+**The fix**: Add APL awareness to `MakeSureIMEOn()`. When
+`composition_mode = APL`, set `apl_mode_active_ = true` and route to
+HALF_ASCII (mirroring what `CompositionModeAPL` does). When the mode is
+anything other than APL, set `apl_mode_active_ = false`. Alternatively,
+make `MakeSureIMEOn()` delegate to the same `CompositionModeAPL()` path
+used by `SWITCH_COMPOSITION_MODE`.
+
+Also check `ApplyCompositionMode()` (line ~86) — this free function
+handles the APL case at line ~104 by routing to HALF_ASCII, but it
+cannot set `apl_mode_active_` because it only has access to the
+`Composer`, not the `Session`. Either:
+- Move the `apl_mode_active_` management into every caller of
+  `ApplyCompositionMode()`, or
+- Change `ApplyCompositionMode()` to return a signal that the caller
+  should set `apl_mode_active_`.
+
+This fixes **Issue #3** (APL mode reverts after autocomplete) and
+**Issue #4** (APL mode lost on Enable/FocusIn).
+
+**Cleanup note**: Remove the temporary file-based key logger added at
+`src/unix/ibus/mozc_engine.cc` line 378 (`fopen("/tmp/mozc_keylog.txt")`).
+This was added during debugging and must not ship.
+
+#### Step 2.2e: Ensure `OutputMode()` reports APL to the property handler
+
+Already implemented in Phase 1 — `OutputMode()` overrides the reported
+`CompositionMode` to `APL` when `apl_mode_active_` is true. With
+Step 2.2c in place, the property handler will now correctly match this
+to the APL entry and display "⍺" in the panel.
+
+Verify that `property_handler_->Update()` (called from `Enable()` and
+key event handlers) correctly propagates the APL mode through
+`original_composition_mode_` so it survives subsequent `Register()` calls
+during FocusIn.
+
+#### Files changed in Step 2.2
+
+| File | Change |
+|------|--------|
+| `src/unix/ibus/ibus_config.proto` | Add `APL = 6` to `Engine.CompositionMode` |
+| `src/unix/ibus/mozc_engine.cc` | Add APL case to `ConvertCompositionMode()` |
+| `src/unix/ibus/property_handler.cc` | Add APL entry to `kMozcEngineProperties` |
+| `src/session/session.cc` | Handle APL in `TURN_ON_IME`; audit `apl_mode_active_ = false` sites |
+
+#### Expected result
+
+After this change:
+- Switching to Mozc (Win+Space) preserves APL mode if it was active
+- Clicking between applications (FocusIn/FocusOut) preserves APL mode
+- Pressing Enter, committing preedit, or dismissing autocomplete does not
+  clear APL mode
+- The taskbar icon shows "⍺" when APL mode is active
+- Ctrl+key produces APL glyphs in VSCode and all other applications
 
 ### Step 2.3: Configurable shifting key
 
