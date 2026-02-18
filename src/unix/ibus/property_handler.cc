@@ -29,6 +29,7 @@
 
 #include "unix/ibus/property_handler.h"
 
+#include <cstdio>
 #include <string>
 
 #include "absl/log/check.h"
@@ -330,6 +331,12 @@ void PropertyHandler::Update(IbusEngineWrapper *engine,
                              const commands::Output &output) {
   if (IsDisabled()) {
     return;
+  }
+
+  if (output.has_status()) {
+    FILE* f = fopen("/tmp/mozc_lifecycle.txt", "a");
+    if (f) { fprintf(f, "PropHandler::Update: status.activated=%d status.mode=%d cur_activated=%d cur_mode=%d\n",
+             output.status().activated(), output.status().mode(), is_activated_, original_composition_mode_); fclose(f); }
   }
 
   if (output.has_status() &&

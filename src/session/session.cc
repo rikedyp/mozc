@@ -1039,8 +1039,9 @@ bool Session::IMEOn(commands::Command* command) {
 
   SetSessionState(ImeContext::PRECOMPOSITION, context_.get());
   if (command->input().has_key() && command->input().key().has_mode()) {
-    ApplyCompositionMode(command->input().key().mode(),
-                         context_->mutable_composer());
+    const auto mode = command->input().key().mode();
+    ApplyCompositionMode(mode, context_->mutable_composer());
+    apl_mode_active_ = (mode == commands::APL);
   }
   OutputMode(command);
   return true;
@@ -1049,6 +1050,7 @@ bool Session::IMEOn(commands::Command* command) {
 bool Session::IMEOff(commands::Command* command) {
   command->mutable_output()->set_consumed(true);
   ClearUndoContext();
+  apl_mode_active_ = false;
 
   Commit(command);
 
@@ -1075,8 +1077,9 @@ bool Session::MakeSureIMEOn(mozc::commands::Command* command) {
   }
   if (command->input().has_command() &&
       command->input().command().has_composition_mode()) {
-    ApplyCompositionMode(command->input().command().composition_mode(),
-                         context_->mutable_composer());
+    const auto mode = command->input().command().composition_mode();
+    ApplyCompositionMode(mode, context_->mutable_composer());
+    apl_mode_active_ = (mode == commands::APL);
   }
   OutputMode(command);
   return true;
@@ -1100,8 +1103,12 @@ bool Session::MakeSureIMEOff(mozc::commands::Command* command) {
   }
   if (command->input().has_command() &&
       command->input().command().has_composition_mode()) {
-    ApplyCompositionMode(command->input().command().composition_mode(),
-                         context_->mutable_composer());
+    const auto mode = command->input().command().composition_mode();
+    ApplyCompositionMode(mode, context_->mutable_composer());
+    apl_mode_active_ = (mode == commands::APL);
+  } else {
+    // Turning IME off without a specific mode clears APL.
+    apl_mode_active_ = false;
   }
   OutputMode(command);
   return true;

@@ -279,6 +279,8 @@ void MozcEngine::CursorUp(IbusEngineWrapper *engine) {
 }
 
 void MozcEngine::Disable(IbusEngineWrapper *engine) {
+  { FILE* f = fopen("/tmp/mozc_lifecycle.txt", "a");
+    if (f) { fprintf(f, "Disable\n"); fclose(f); } }
   RevertSession(engine);
   GetCandidateWindowHandler(engine)->Hide(engine);
   key_event_handler_->Clear();
@@ -300,6 +302,8 @@ commands::CompositionMode ConvertCompositionMode(
       return commands::FULL_ASCII;
     case ibus::Engine::HALF_KATAKANA:
       return commands::HALF_KATAKANA;
+    case ibus::Engine::APL:
+      return commands::APL;
     default:
       return commands::NUM_OF_COMPOSITIONS;
   }
@@ -307,6 +311,8 @@ commands::CompositionMode ConvertCompositionMode(
 }  // namespace
 
 void MozcEngine::Enable(IbusEngineWrapper *engine) {
+  { FILE* f = fopen("/tmp/mozc_lifecycle.txt", "a");
+    if (f) { fprintf(f, "Enable engine=%.*s\n", static_cast<int>(engine->GetName().size()), engine->GetName().data()); fclose(f); } }
   // Launch mozc_server
   client_->EnsureConnection();
   UpdatePreeditMethod();
@@ -322,6 +328,8 @@ void MozcEngine::Enable(IbusEngineWrapper *engine) {
   commands::CompositionMode mode = ConvertCompositionMode(
       ibus_config_.GetCompositionMode(engine->GetName()));
 
+  { FILE* f = fopen("/tmp/mozc_lifecycle.txt", "a");
+    if (f) { fprintf(f, "Enable: config mode=%d (NUM_OF=%d)\n", mode, commands::NUM_OF_COMPOSITIONS); fclose(f); } }
   if (mode == commands::NUM_OF_COMPOSITIONS) {
     // Do nothing.
   } else {
@@ -341,11 +349,16 @@ void MozcEngine::Enable(IbusEngineWrapper *engine) {
 }
 
 void MozcEngine::FocusIn(IbusEngineWrapper *engine) {
+  { FILE* f = fopen("/tmp/mozc_lifecycle.txt", "a");
+    if (f) { fprintf(f, "FocusIn activated=%d mode=%d\n",
+             property_handler_->IsActivated(), property_handler_->GetOriginalCompositionMode()); fclose(f); } }
   property_handler_->Register(engine);
   UpdatePreeditMethod();
 }
 
 void MozcEngine::FocusOut(IbusEngineWrapper *engine) {
+  { FILE* f = fopen("/tmp/mozc_lifecycle.txt", "a");
+    if (f) { fprintf(f, "FocusOut\n"); fclose(f); } }
   GetCandidateWindowHandler(engine)->Hide(engine);
   property_handler_->ResetContentType(engine);
 
@@ -374,9 +387,6 @@ bool MozcEngine::ProcessKeyEvent(IbusEngineWrapper *engine, uint keyval,
                                  uint keycode, uint modifiers) {
   MOZC_VLOG(2) << "keyval: " << keyval << ", keycode: " << keycode
                << ", modifiers: " << modifiers;
-  // TEMP: log all key events to file for debugging Ctrl+key interception
-  { FILE* f = fopen("/tmp/mozc_keylog.txt", "a");
-    if (f) { fprintf(f, "keyval=%u keycode=%u mod=%u\n", keyval, keycode, modifiers); fclose(f); } }
   if (property_handler_->IsDisabled()) {
     return false;
   }
@@ -414,6 +424,10 @@ bool MozcEngine::ProcessKeyEvent(IbusEngineWrapper *engine, uint keyval,
 
   MOZC_VLOG(2) << output;
 
+  { FILE* f = fopen("/tmp/mozc_lifecycle.txt", "a");
+    if (f) { fprintf(f, "ProcessKeyEvent: keyval=%u mod=%u consumed=%d out_mode=%d\n",
+             keyval, modifiers, output.consumed(), output.has_status() ? output.status().mode() : -1); fclose(f); } }
+
   UpdateAll(engine, output);
 
   return output.consumed();
@@ -436,7 +450,11 @@ void MozcEngine::PropertyShow(IbusEngineWrapper *engine,
   // We can ignore the signal.
 }
 
-void MozcEngine::Reset(IbusEngineWrapper *engine) { RevertSession(engine); }
+void MozcEngine::Reset(IbusEngineWrapper *engine) {
+  { FILE* f = fopen("/tmp/mozc_lifecycle.txt", "a");
+    if (f) { fprintf(f, "Reset\n"); fclose(f); } }
+  RevertSession(engine);
+}
 
 void MozcEngine::SetCapabilities(IbusEngineWrapper *engine, uint capabilities) {
   // Do nothing.
