@@ -559,14 +559,14 @@ not required for the first distribution.
 Phase 2: Polish and Configuration
 ----------------------------------
 
-### Step 2.0: Fix taskbar icon
+### Step 2.0: Fix taskbar icon — **Verified ✓**
 
-*Subsumed by Step 2.2c.* Adding APL to `kMozcEngineProperties` gives the
+*Subsumed by Step 2.1c.* Adding APL to `kMozcEngineProperties` gives the
 property handler the correct symbol ("⍺") and icon for APL mode. The "_A"
 display was caused by the property handler falling through to the HALF_ASCII
 entry (symbol "_A") because no APL entry existed.
 
-### Step 2.1: Fix APL mode persistence (full IBus integration)
+### Step 2.1: Fix APL mode persistence (full IBus integration) — **Verified ✓**
 
 **Problem**: APL mode does not survive Enable/FocusIn cycles, autocomplete
 commits, or focus changes between applications. The `apl_mode_active_` flag
@@ -734,9 +734,8 @@ during FocusIn.
 | `src/unix/ibus/property_handler.cc` | Add APL entry to `kMozcEngineProperties` |
 | `src/session/session.cc` | Handle APL in `TURN_ON_IME`; audit `apl_mode_active_ = false` sites |
 
-#### Expected result
+#### Result — Verified ✓
 
-After this change:
 - Switching to Mozc (Win+Space) preserves APL mode if it was active
 - Clicking between applications (FocusIn/FocusOut) preserves APL mode
 - Pressing Enter, committing preedit, or dismissing autocomplete does not
@@ -744,19 +743,43 @@ After this change:
 - The taskbar icon shows "⍺" when APL mode is active
 - Ctrl+key produces APL glyphs in VSCode and all other applications
 
-### Step 2.2: Suppress autocomplete in APL mode
+### Step 2.2: Suppress autocomplete in APL mode — **Verified ✓**
 
-**Files**: `src/session/session.cc` and/or `src/converter/converter.cc`
+**File**: `src/session/session.cc`
 
-While `apl_mode_active_` is true, Mozc should not display the candidate/
-suggestion window for unshifted keystrokes. Options:
+Extended `TryAplShiftedKey()` to handle unshifted printable ASCII keys
+(0x20–0x7e) in addition to Ctrl+key combinations. When `apl_mode_active_`
+is true and the key carries no Ctrl modifier, the character (`key_string`
+if set, otherwise `key_code` cast to char) is committed directly —
+bypassing the Composer, `Suggest()`, and the entire conversion pipeline.
+Special keys (Backspace, Enter, arrows) are not intercepted because they
+use `special_key` rather than `key_code` and fall through to the normal
+keymap handler unchanged.
 
-- Set the `Request` to disable suggestion/prediction when entering APL mode.
-- In the state handlers, skip the conversion step and emit a direct result for
-  unshifted keys in APL mode (treating them as immediate HALF_ASCII commit).
-- Filter candidates in the output before returning to the client.
+Also removed the Phase 1 diagnostic `LOG(INFO)` noise from
+`TryAplShiftedKey()`.
 
-### Step 2.3: Configurable shifting key
+### Step 2.3: Ctrl+Shift for shifted APL glyphs
+
+Many APL keyboards have a second layer accessed via Ctrl+Shift (or APL+Shift).
+Add a second lookup table for shifted glyphs and implement the detection in
+`TryAplShiftedKey()`:
+
+```
+Ctrl+Shift+A → ⍶ (alpha underbar)
+Ctrl+Shift+W → ⍹ (omega underbar)
+...
+```
+
+**Files**: `src/session/apl_keymap.h`, `src/session/apl_keymap.cc`,
+`src/session/session.cc`
+
+Add `GetAplShiftedGlyph(uint32_t key_code)` alongside `GetAplGlyph()`.
+In `TryAplShiftedKey()`, when Ctrl is held, check for SHIFT in the modifier
+list first and look up the shifted table; fall back to the unshifted table if
+no shifted glyph is defined for that key.
+
+### Step 2.4: Configurable shifting key
 
 Add a config option (`protocol/config.proto`) to select the APL shifting key:
 
@@ -772,23 +795,30 @@ optional AplShiftingKey apl_shifting_key = N [default = APL_SHIFT_CTRL];
 Update `TryAplShiftedKey()` to check the configured modifier instead of
 hardcoding Ctrl.
 
-### Step 2.4: Ctrl+Shift for shifted APL glyphs
+### Step 2.5: Remove Japanese modes for early-access release
 
-Many APL keyboards have a second layer accessed via Ctrl+Shift (or APL+Shift).
-Add a second lookup table for shifted glyphs:
+For the early-access POC, hide all Japanese composition modes from the IBus
+property menu so the UI presents only APL and Direct input. The Japanese
+converter/dictionary code remains in the binary (removing it is invasive and
+risks regressions), but no Japanese modes are exposed to the user.
 
-```
-Ctrl+Shift+A → ⍶ (alpha underbar)
-Ctrl+Shift+W → ⍹ (omega underbar)
-...
-```
+**File**: `src/unix/ibus/property_handler.cc`
 
-### Step 2.5: Complete the glyph table
+Trim `kMozcEngineProperties` to retain only the DIRECT and APL entries.
+Remove the Hiragana, Full Katakana, Half ASCII, Full ASCII, and Half Katakana
+entries from the array.
+
+**File**: `src/unix/ibus/mozc_engine.cc`
+
+Change the default/fallback composition mode (used when the engine first
+starts and no saved mode is found) from HIRAGANA to APL.
+
+### Step 2.6: Complete the glyph table
 
 Fill out the full APL keyboard layout covering all standard glyphs. Reference
 layouts: Dyalog US, GNU APL, IBM APL2.
 
-### Step 2.6: Externalize the glyph table
+### Step 2.7: Externalize the glyph table
 
 Move the glyph mapping from C++ code to a data file
 (e.g., `src/data/apl/apl_keyboard.tsv`) so it can be edited without
@@ -804,7 +834,7 @@ ctrl+shift	a	⍶	alpha underbar
 
 Load this in `Table` or a new `AplTable` class at startup.
 
-### Step 2.7: Handle preedit interaction
+### Step 2.8: Handle preedit interaction
 
 When the user presses Ctrl+A while there is uncommitted preedit text:
 - Option A: Commit preedit first, then insert APL glyph
@@ -814,7 +844,7 @@ When the user presses Ctrl+A while there is uncommitted preedit text:
 Option A is most intuitive. Implement by calling `CommitPreedit()` before
 inserting the APL result.
 
-### Step 2.8: Visual feedback
+### Step 2.9: Visual feedback
 
 When in APL mode, show "APL" in the language bar with a distinctive icon.
 Consider showing the APL keyboard layout as a tooltip or floating window.
@@ -837,7 +867,7 @@ Ride triggers "select all" rather than producing ⍺.
 Electron version before this IME ships, at which point running under a native
 Wayland session (which works correctly — verified in VSCode) should resolve it
 automatically. If Ride is still on an old Electron at release time, the
-Right-Alt shifting key (Step 2.3) is a viable workaround since Right-Alt is
+Right-Alt shifting key (Step 2.4) is a viable workaround since Right-Alt is
 not in Electron's accelerator table.
 
 ### Step 3.1: Windows (TSF/IMM32)
@@ -951,6 +981,6 @@ Summary of Phases
 | Phase | Scope | Platform | Status | Key Deliverable |
 |-------|-------|----------|--------|-----------------|
 | 1 | Minimal POC | Linux | **Done** (2026-02-15) | Ctrl+key → APL glyph via IBus/Wayland/KDE |
-| 2 | Polish | Linux | In progress | Icon fix, autocomplete suppression, mode persistence, full layout, config |
+| 2 | Polish | Linux | In progress (2.0–2.2 done) | Shifted glyphs, configurable key, remove Japanese UI, full layout |
 | 3 | Cross-platform | Win/Mac/Ride | Pending | TSF + IMK integration, Ride verification |
 | 4 | Advanced | All | Pending | Keyword search, idioms, composition, overlay |
