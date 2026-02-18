@@ -1,6 +1,6 @@
-# Ctrl+Key APL Input: Electron/Chromium Limitation
+# Ctrl+Key APL Input: XWayland Limitation
 
-## Status: Known Issue (2026-02-17)
+## Status: Resolved on Wayland; XWayland limitation documented (2026-02-18)
 
 ## Summary
 
@@ -9,9 +9,15 @@ flag survives Enable/Disable/FocusIn/FocusOut cycles, and the property handler
 consistently reports `mode=6` (APL) throughout. Ctrl+key events reach mozc and
 are consumed (`consumed=1`).
 
-However, **Electron/Chromium apps (including VSCode) intercept Ctrl+key
-shortcuts independently of the IME layer**, so Ctrl+A triggers "select all"
-even though mozc consumed the key event and returned `consumed=true`.
+**On a native Wayland session, Ctrl+key APL input works correctly in VSCode**
+and other Electron/Chromium apps. The Wayland compositor routes key events
+through the IME before the application's accelerator table, so `consumed=true`
+from mozc correctly suppresses the shortcut.
+
+The problem is specific to **XWayland compatibility mode** — apps running under
+X11 emulation on Wayland, or in a plain X11 session. In that case, Electron's
+accelerator table fires before the IBus D-Bus response arrives, and
+`consumed=true` cannot undo the shortcut.
 
 ## Evidence
 
@@ -26,7 +32,13 @@ ProcessKeyEvent: keyval=108 mod=4 consumed=1 out_mode=-1  # Ctrl+L -> quad
 
 APL glyphs are output. No application shortcuts triggered.
 
-### VSCode (Electron, broken)
+### VSCode on Wayland (works correctly)
+
+Verified 2026-02-18 on KDE Plasma Wayland session. Ctrl+key produces APL glyphs
+in VSCode identically to Kate. The compositor intercepts keys before Electron's
+accelerator table.
+
+### VSCode on XWayland / X11 session (broken)
 
 ```
 FocusIn activated=1 mode=6
@@ -41,9 +53,15 @@ shortcut caused a focus change or IME reset.
 
 ## Root Cause
 
-GTK apps and Chromium/Electron handle IME key events very differently.
+The difference is not GTK vs Electron — it is **Wayland vs XWayland**. On native
+Wayland, the compositor routes key events through the IME (`zwp_input_method_v2`)
+before the application sees them, so `consumed=true` works correctly everywhere.
+On XWayland, the X11 event model is used: GTK apps call
+`gtk_im_context_filter_keypress()` synchronously before their shortcut handlers,
+but Chromium/Electron checks its accelerator table independently and in parallel
+with the async IBus D-Bus call.
 
-### GTK apps (works correctly)
+### GTK apps on X11/XWayland (works correctly)
 
 GTK calls `gtk_im_context_filter_keypress()` **synchronously** before doing
 anything else with the key:
@@ -56,7 +74,7 @@ Key press (Ctrl+A)
   → key is dropped; app never sees it
 ```
 
-### Chromium/Electron (broken for Ctrl+)
+### Chromium/Electron on XWayland/X11 (broken for Ctrl+)
 
 Chromium doesn't use `GtkIMContext`. It has its own IBus client
 (`ui/base/ime/`) that runs independently of the accelerator system:
@@ -76,36 +94,30 @@ reaches the IME subsystem. `consumed=true` from mozc only prevents a duplicate
 character being inserted — it cannot undo a shortcut that already fired.
 
 This is a known architectural limitation of Chromium's IME integration on
-Linux. There have been many upstream Chromium bugs filed about it.
+X11/XWayland. There have been many upstream Chromium bugs filed about it.
 
-## Possible Workarounds
+## Resolution
 
-### Option A: Accept the limitation
-Ctrl+key APL input works in native apps (Kate, terminals, etc.) but not in
-Electron apps. Users would need a different workflow for VSCode.
+**Option C (Wayland) is confirmed working.** Verified 2026-02-18: on a native
+KDE Plasma Wayland session, Ctrl+key APL input works correctly in VSCode.
+No mozc changes are needed — the compositor handles the routing.
 
-### Option B: Configurable shifting key (Step 2.3) ← recommended
-Allow using Right-Alt (or another modifier) instead of Ctrl. Right-Alt is not
-in Electron's accelerator table, so the key reaches the IME cleanly.
-Already planned as Step 2.3 in the design doc. Right-Alt is a natural choice:
-- Not used by VSCode/Electron for any default shortcuts
-- Used by some existing APL implementations (e.g. Dyalog on Windows)
-- Ergonomically similar to Ctrl for touch-typing
+The recommended user requirement is therefore: **run a Wayland session**.
+This is the default on modern KDE and GNOME installs.
 
-### Option C: Wayland (may fix it properly)
-The Wayland input-method protocol (`zwp_input_method_v2`) is *supposed to*
-route all key events through the IM **before** the application sees them, not
-in parallel. If Electron on Wayland respects this, Ctrl+key would reach mozc
-first and the accelerator would never fire. Worth testing — if it works, no
-code changes are needed on the mozc side.
+## Remaining Limitation: XWayland apps
 
-### Option D: X11 `XGrabKey`
-Grab Ctrl+key combinations at the X server level so they never reach the
-application. Effective but very invasive — the grab is global, meaning Ctrl+A
-would stop working as "select all" in *all* apps while APL mode is active.
-Some Chinese IMEs use this approach; generally considered too disruptive.
+Apps that run in XWayland compatibility mode (e.g. older Electron versions that
+do not support `--ozone-platform=wayland`) still exhibit the broken behaviour
+even within a Wayland session. The specific known case is **Ride** (Dyalog APL
+IDE), which uses an older Electron version.
 
-### Option E: VSCode extension
-A small VSCode extension intercepts key events at the editor level and inserts
-APL glyphs directly, bypassing the IME entirely. VSCode-specific but reliable.
-Could coexist with the mozc IME approach for other apps.
+**Decision**: Accept this limitation. Ride is expected to update its Electron
+version before this IME ships. The limitation will be documented in the user-
+facing release notes. No workaround is planned at this time.
+
+If a workaround is needed in future, options remain:
+- **Configurable shifting key** (Step 2.3): Right-Alt is not in Electron's
+  accelerator table and would work even on XWayland.
+- **VSCode extension**: intercepts keys at the editor level, VSCode-specific.
+- **X11 `XGrabKey`**: global grab, too invasive for general use.

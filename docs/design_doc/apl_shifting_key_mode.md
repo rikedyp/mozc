@@ -490,48 +490,26 @@ IME is in APL mode. End-to-end verification confirmed on Linux/Wayland/KDE.
    false, `TryAplShiftedKey()` returns early and Ctrl events pass through to
    the application unhandled.
 
-4. **Ctrl+key input does not work in VSCode (Electron/Chromium apps).**
+4. **Ctrl+key input does not work in VSCode (Electron/Chromium apps) — on X11.**
    APL glyphs are produced correctly in native applications (e.g. Kate) but
-   not in VSCode. Clicking into a VSCode editor also causes the Mozc mode
-   indicator to revert to Latin.
+   not in VSCode when running in an X11 or XWayland session. Clicking into a
+   VSCode editor also causes the Mozc mode indicator to revert to Latin.
 
    **Initial hypothesis (INCORRECT)**: Electron (Chromium) intercepts
    Ctrl+key combinations at the application level before they reach IBus.
 
-   **Actual root cause**: Verified via file-based logging in
+   **Actual root cause (X11 session)**: Verified via file-based logging in
    `MozcEngine::ProcessKeyEvent()` that Ctrl+key events **do reach Mozc**
    in VSCode — the IBus key event contains `keyval=97 mod=4` (Ctrl+A),
    identical to what Kate sends. The problem is that Mozc returns `false`
    (event not consumed) because `apl_mode_active_` has already been cleared
-   by the time the keystroke arrives.
+   by the time the keystroke arrives. (See Step 2.1 for the fix.)
 
-   The mode reset happens during the Enable/FocusIn cycle triggered by
-   switching to Mozc (Win+Space) or clicking into a VSCode editor:
-
-   1. `MozcEngine::Enable()` reads the composition mode from `ibus_config_`
-      (the IBus XML config). `ConvertCompositionMode()` has no case for APL,
-      so it returns `NUM_OF_COMPOSITIONS` and the "Do nothing" branch is
-      taken — but `Enable()` also sends `TURN_ON_IME`, which resets the
-      session to its default mode (HIRAGANA).
-   2. `MozcEngine::FocusIn()` calls `property_handler_->Register()`, which
-      rebuilds the IBus property panel using `original_composition_mode_`
-      (initialized to `commands::HIRAGANA`).
-   3. The session's `apl_mode_active_` flag is cleared by the mode switch,
-      so subsequent Ctrl+key events fall through `TryAplShiftedKey()` and
-      are passed to the application unhandled.
-
-   This is the same underlying issue as #3 (APL mode reverts after
-   autocomplete) — `apl_mode_active_` does not survive state transitions
-   triggered by Enable, FocusIn, or preedit commit.
-
-   **Implication**: The fix requires making APL mode persist across
-   Enable/FocusIn cycles. Options include: (a) adding APL to
-   `ConvertCompositionMode()` and the IBus config so `Enable()` can
-   restore it, (b) persisting `apl_mode_active_` in the session so it
-   survives `TURN_ON_IME`, or (c) having the property handler track and
-   restore APL mode through `Register()` calls. This is a tractable
-   fix within the existing architecture — Ctrl as a shifting key is NOT
-   fundamentally blocked by Electron/Chromium.
+   **Resolved on Wayland (2026-02-18)**: On a native Wayland session
+   (`zwp_input_method_v2`), the compositor routes key events through the IME
+   before Electron's accelerator table. Ctrl+key APL input works correctly in
+   VSCode on Wayland with no additional code changes. The X11/XWayland case
+   is a documented limitation (see `ctrl_key_wip.md`).
 
 **Pending verification:**
 
@@ -847,9 +825,20 @@ Phase 3: Cross-Platform Support
 ### Step 3.0: Ride (Dyalog APL IDE) verification
 
 Ride is the primary IDE for Dyalog APL and a key target environment for this
-feature. Ride may have its own key-event interception or virtual-keyboard layer
-that warrants investigation separately from generic Linux apps. Test the full
-Ctrl+key layout inside Ride on Linux before proceeding to other platforms.
+feature.
+
+**Known limitation**: Ride uses an older Electron version that runs under
+XWayland even in a Wayland session. On XWayland, Chromium/Electron's
+accelerator table fires before the IBus D-Bus response arrives, so
+`consumed=true` from mozc cannot suppress Ctrl+key shortcuts. Ctrl+A in
+Ride triggers "select all" rather than producing ⍺.
+
+**Decision**: Accept this limitation for now. Ride is expected to update its
+Electron version before this IME ships, at which point running under a native
+Wayland session (which works correctly — verified in VSCode) should resolve it
+automatically. If Ride is still on an old Electron at release time, the
+Right-Alt shifting key (Step 2.3) is a viable workaround since Right-Alt is
+not in Electron's accelerator table.
 
 ### Step 3.1: Windows (TSF/IMM32)
 
