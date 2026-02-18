@@ -42,6 +42,12 @@ namespace session {
 // (Ctrl) is held, or std::nullopt if no mapping exists.
 std::optional<absl::string_view> GetAplGlyph(uint32_t key_code);
 
+// Returns the APL glyph for a given ASCII key code when both Ctrl and Shift
+// are held (the second APL layer), or std::nullopt if no mapping exists.
+// Key codes here are uppercase letters / shift-layer symbols, since the IBus
+// key translator encodes Shift into the keyval for printable keys.
+std::optional<absl::string_view> GetAplShiftedGlyph(uint32_t key_code);
+
 }  // namespace session
 }  // namespace mozc
 

@@ -2214,9 +2214,15 @@ bool Session::TryAplShiftedKey(commands::Command* command) {
   }
 
   if (has_ctrl) {
-    // Ctrl+key: look up the APL glyph for this key code and commit directly.
+    // Ctrl+key / Ctrl+Shift+key: look up the APL glyph and commit directly.
+    // The IBus key translator encodes Shift into the keyval for printable keys
+    // (e.g. Ctrl+Shift+A → key_code='A'), so SHIFT is absent from
+    // modifier_keys() here.  We detect the Shift layer by trying the shifted
+    // table first; if it has no entry we fall back to the unshifted table.
     if (!key.has_key_code()) return false;
-    std::optional<absl::string_view> glyph = GetAplGlyph(key.key_code());
+    const uint32_t kc = key.key_code();
+    std::optional<absl::string_view> glyph = GetAplShiftedGlyph(kc);
+    if (!glyph.has_value()) glyph = GetAplGlyph(kc);
     if (!glyph.has_value()) return false;
 
     commands::Result* result = command->mutable_output()->mutable_result();

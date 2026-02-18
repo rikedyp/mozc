@@ -99,5 +99,73 @@ std::optional<absl::string_view> GetAplGlyph(uint32_t key_code) {
   return std::nullopt;
 }
 
+std::optional<absl::string_view> GetAplShiftedGlyph(uint32_t key_code) {
+  // Dyalog APL US keyboard layout — Ctrl+Shift+key assignments (second layer).
+  //
+  // Key codes are the keyvals produced with Shift held, because the IBus key
+  // translator encodes Shift into the keyval for printable keys — the SHIFT
+  // modifier flag is absent from KeyEvent::modifier_keys() for these keys.
+  // Letter keys therefore appear as uppercase ('E', 'T', …); bracket/punctuation
+  // keys appear as their shifted symbols ('{', '}', ':', '"', '<', '>', '?', '|').
+  //
+  // Reference: Dyalog APL US keyboard layout (Ctrl+Shift layer)
+  // Note: on UK layout ≢ lives on the ISO '#' key (Ctrl+Shift+# → '~');
+  // on US layout the same APL position is the apostrophe key (Ctrl+Shift+' → '"').
+  static const auto* kShiftedMap =
+      new absl::flat_hash_map<uint32_t, absl::string_view>({
+          // Number row — Ctrl+Shift+key → shifted keyval (US layout)
+          // Alignment: ` 1 _ 3 4 5 6 7 8 9 0 - =  (_ = nothing on key 2)
+          {'~', "⌺"},  // stencil — Ctrl+Shift+`
+          {'!', "⌶"},  // I-beam — Ctrl+Shift+1
+          // '@' (Ctrl+Shift+2) → nothing
+          {'#', "⍒"},  // grade down — Ctrl+Shift+3
+          {'$', "⍋"},  // grade up — Ctrl+Shift+4
+          {'%', "⌽"},  // rotate / reverse — Ctrl+Shift+5
+          {'^', "⍉"},  // transpose — Ctrl+Shift+6
+          {'&', "⊖"},  // rotate first axis — Ctrl+Shift+7
+          {'*', "⍟"},  // circle-star (natural log) — Ctrl+Shift+8
+          {'(', "⍱"},  // nor — Ctrl+Shift+9
+          {')', "⍲"},  // nand — Ctrl+Shift+0
+          {'_', "!"},  // factorial — Ctrl+Shift+-  ('!' here is the output glyph)
+          {'+', "⌹"},  // quad-divide (domino) — Ctrl+Shift+=
+
+          // QWERTY row (letters — Ctrl+Shift+key → uppercase keyval)
+          {'E', "⍷"},  // epsilon-underbar (find)
+          {'T', "⍨"},  // tilde-diaeresis (selfie / commute)
+          {'I', "⍸"},  // iota-underbar (indices of)
+          {'O', "⍥"},  // circle-diaeresis (over)
+          {'P', "⍣"},  // star-diaeresis (power operator)
+
+          // QWERTY row (punctuation — Ctrl+Shift+[ → '{', Ctrl+Shift+] → '}')
+          {'{', "⍞"},  // quote-quad (character input)
+          {'}', "⍬"},  // zilde (empty numeric vector)
+
+          // ASDF row (letters)
+          {'F', "⍛"},  // circle-star
+          {'J', "⍤"},  // jot-diaeresis (rank)
+          {'K', "⌸"},  // quad-equal (key / from)
+          {'L', "⌷"},  // squish-quad (index)
+
+          // ASDF row (punctuation — Ctrl+Shift+; → ':', Ctrl+Shift+' → '"')
+          {':', "≡"},  // identical to
+          {'"', "≢"},  // not-identical-to — Ctrl+Shift+' (US apostrophe, next to Enter)
+
+          // QWERTY row tail (Ctrl+Shift+\ → '|', same keysym on UK ISO and US ANSI)
+          {'|', "⊣"},  // left-tack
+
+          // ZXCV row (letters)
+          {'Z', "⊆"},  // left-shoe-underbar (partition)
+
+          // ZXCV row (punctuation — Ctrl+Shift+, → '<', . → '>', / → '?')
+          {'<', "⍪"},  // comma-bar (table)
+          {'>', "⍙"},  // delta-underbar
+          {'?', "⍠"},  // quad-colon (variant)
+      });
+
+  auto it = kShiftedMap->find(key_code);
+  if (it != kShiftedMap->end()) return it->second;
+  return std::nullopt;
+}
+
 }  // namespace session
 }  // namespace mozc
