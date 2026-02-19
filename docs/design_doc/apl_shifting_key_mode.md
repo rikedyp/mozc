@@ -881,29 +881,46 @@ Suggested investigation steps:
 - If viable, add `SUPER = 8192` to `ModifierKey`, emit it from the translator,
   and add `APL_SHIFT_SUPER = 4` to `AplShiftingKey`.
 
-### Step 2.4a: Fix Ctrl+key shortcuts broken when Alt is the shifting key
+### Step 2.4a: Fix Ctrl+key shortcuts broken when Alt is the shifting key — **Verified ✓**
 
-**Problem**: When Alt is configured as the APL shifting key, standard
-Ctrl+key application shortcuts (e.g. Ctrl+A to select all) stop working.
-The root cause is likely in `TryAplShiftedKey()`: the function checks
-whether the **configured** shifting key is present in the modifier list,
-but the unshifted-passthrough path added in Step 2.2 commits printable ASCII
-characters directly. If any part of the intercept logic fires on keys that
-carry Ctrl (but not Alt), those keystrokes are consumed by the IME and never
-reach the application.
+**Root cause**: The unshifted-passthrough path added in Step 2.2
+committed any printable-range `key_code` without first checking whether a
+non-shifting modifier was held. Execution trace for Ctrl+A when Alt is the
+shifting key:
 
-**Expected behaviour**: With Alt as the shifting key, only Alt+key
-combinations should be intercepted by `TryAplShiftedKey()`. Any keystroke
-that does **not** carry the configured shifting modifier (including all
-Ctrl+key combinations) must be returned unconsumed so the application can
-handle them normally.
+```
+TryAplShiftedKey():
+  shifting_modifier = ALT           (config = APL_SHIFT_ALT)
+  modifier_keys = [CTRL]            (Ctrl+A event)
+  has_shifting_key = false          ALT not in modifiers → falls through
+  kc = 0x61 ('a')                   in range 0x20–0x7e ✓
+  commits 'a', returns true         BUG: Ctrl+A consumed by IME
+```
 
-**Fix**: Audit `TryAplShiftedKey()` to ensure:
-1. The shifting-modifier check happens **before** any passthrough commit.
-2. Keystrokes carrying a non-shifting modifier (Ctrl, Super, …) while Alt is
-   the configured shifting key are explicitly passed through.
+The function checked for the configured shifting key, found it absent, then
+fell straight into the unshifted passthrough which committed the bare
+character and returned `true` (consumed). Ctrl+A never reached the
+application.
 
-**Files**: `src/session/session.cc`, `src/session/apl_keymap.cc`
+**Fix** (`src/session/session.cc`): Added a guard at the top of the
+unshifted-passthrough block that iterates `modifier_keys` and returns
+`false` (pass through) if any modifier other than Shift / Left Shift /
+Right Shift / Caps is present. Shift and Caps are permitted because their
+effect is already reflected in `key_string` (e.g. Shift+A gives `key_string
+= "A"`). Any other modifier (Ctrl, Alt, Left-Alt, Right-Alt, …) indicates
+an application shortcut that the IME must not consume.
+
+This is safe because the `has_shifting_key` block above already handles the
+case where the configured shifting key is held — by the time we reach the
+unshifted path, the configured shifting modifier cannot be in the list.
+
+**Expected behaviour after fix**: With Alt as the shifting key:
+- Alt+A → ⍺ (consumed by IME — shifting-key path)
+- A → 'a' (consumed by IME — unshifted passthrough, no modifier)
+- Ctrl+A → **not consumed** → application receives Ctrl+A normally
+- Ctrl+Shift+A → **not consumed** → application receives Ctrl+Shift+A normally
+
+**Files**: `src/session/session.cc`
 
 > **Known side-effect — deferred investigation**: When Alt is the shifting
 > key, pressing Alt+key correctly produces an APL glyph, but the Alt keypress
@@ -1102,6 +1119,6 @@ Summary of Phases
 | Phase | Scope | Platform | Status | Key Deliverable |
 |-------|-------|----------|--------|-----------------|
 | 1 | Minimal POC | Linux | **Done** (2026-02-15) | Ctrl+key → APL glyph via IBus/Wayland/KDE |
-| 2 | Polish | Linux | In progress (2.0–2.5 done, 2.9 done) | Fix Alt Ctrl+key regression (2.4a), verify glyph table (2.6) |
+| 2 | Polish | Linux | In progress (2.0–2.5 done, 2.4a done, 2.9 done) | Verify glyph table (2.6) |
 | 3 | Cross-platform | Win/Mac/Ride | Pending | TSF + IMK integration, Ride verification |
 | 4 | Advanced | All | Pending | Keyword search, idioms, composition, overlay |

@@ -2253,6 +2253,21 @@ bool Session::TryAplShiftedKey(commands::Command* command) {
   // bypassing the Composer and suggestion pipeline.  This suppresses the
   // autocomplete popup that would otherwise appear during normal (non-shifted)
   // typing in APL mode.
+  //
+  // Guard: if any modifier other than Shift/Caps is held, this is an
+  // application shortcut (e.g. Ctrl+key when Alt is the shifting key).
+  // The shifting-key case was already handled above; anything else should
+  // pass through to the application unmodified.
+  for (int i = 0; i < key.modifier_keys_size(); ++i) {
+    const auto mod = key.modifier_keys(i);
+    if (mod != commands::KeyEvent::SHIFT &&
+        mod != commands::KeyEvent::LEFT_SHIFT &&
+        mod != commands::KeyEvent::RIGHT_SHIFT &&
+        mod != commands::KeyEvent::CAPS) {
+      return false;
+    }
+  }
+
   if (!key.has_key_code()) return false;
   const uint32_t kc = key.key_code();
   // Only handle printable ASCII; leave control characters and special keys
