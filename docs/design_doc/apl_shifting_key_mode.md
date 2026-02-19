@@ -779,21 +779,75 @@ In `TryAplShiftedKey()`, when Ctrl is held, check for SHIFT in the modifier
 list first and look up the shifted table; fall back to the unshifted table if
 no shifted glyph is defined for that key.
 
-### Step 2.4: Configurable shifting key
+### Step 2.4: Configurable shifting key — **Verified ✓ (Ctrl and Alt only)**
 
-Add a config option (`protocol/config.proto`) to select the APL shifting key:
+Added `AplShiftingKey` to `protocol/config.proto` (`APL_SHIFT_CTRL = 0`,
+`APL_SHIFT_ALT = 1`) and exposed the choice as a dropdown in the properties
+dialog. `TryAplShiftedKey()` reads the server-side config via
+`context_->GetConfig()` (not `command->input().config()`, which is empty for
+normal key events) and checks the appropriate modifier.
 
-```protobuf
-enum AplShiftingKey {
-  APL_SHIFT_CTRL = 0;
-  APL_SHIFT_ALT = 1;
-  APL_SHIFT_RIGHT_ALT = 2;  // AltGr
-}
-optional AplShiftingKey apl_shifting_key = N [default = APL_SHIFT_CTRL];
-```
+**AltGr is not supported in the POC.** See below for the rationale and the
+approach required for a proper future implementation.
 
-Update `TryAplShiftedKey()` to check the configured modifier instead of
-hardcoding Ctrl.
+#### Why AltGr cannot work in the current architecture
+
+AltGr (Right Alt) is handled as ISO Level 3 Shift by the X11 keyboard layer,
+*before* IBus receives the event. When the user presses `AltGr+a`, X11
+applies the level-3 mapping and delivers the composed character (e.g. `æ` on
+many European layouts) to IBus — not an `(AltGr, a)` pair. By the time the
+key event reaches Mozc:
+
+1. **`key_event_handler.cc` discards the event**: `GetKeyEvent()` filters out
+   events with `IBUS_MOD5_MASK` set (the mask for AltGr / ISO Level 3 Shift),
+   returning `false` immediately. The filter exists to avoid interfering with
+   Super+Space (input method switching) and similar desktop shortcuts.
+
+2. **Even if the event were allowed through, `key_code` is wrong**: the
+   `key_code` field in the Mozc `KeyEvent` is set from the X11 keysym
+   (keyval), which is already the composed character (e.g. `0xE6` for `æ`),
+   not the base key (`0x61` for `a`). The APL glyph lookup table uses base
+   ASCII values, so no match is found.
+
+Ctrl and Alt do not have this problem because they do not trigger X11
+level-3 composition — the keyval remains the base character (`a`) and only
+the modifier mask changes.
+
+#### Approach for proper AltGr support in a future implementation
+
+To support AltGr as a first-class shifting key, the following changes are
+required across the IBus frontend and session layers:
+
+1. **Allow MOD5 events through `key_event_handler.cc`** (conditionally, when
+   AltGr is the configured shifting key). The existing blanket `kExtraModMask`
+   filter needs to become config-aware, or the AltGr check must be applied
+   earlier, before the filter.
+
+2. **Map MOD5 to `RIGHT_ALT` in `key_translator.cc`**: Add
+   `{IBUS_ISO_Level3_Shift, IBUS_MOD5_MASK}` to `kIbusModifierMaskMap` and
+   emit `commands::KeyEvent::RIGHT_ALT` when MOD5 is set, so
+   `TryAplShiftedKey()` can detect it via the modifier list.
+
+3. **Use the hardware keycode, not the keysym, for APL lookup**: When
+   `RIGHT_ALT` is the shifting modifier, the keysym (`key_code`) is already
+   the level-3 composed character. Instead, use the raw X11 hardware keycode
+   (the `keycode` parameter passed to `ProcessKeyEvent`) to identify the
+   physical key pressed, and derive the base ASCII character from a
+   keycode-to-character table that is independent of the active XKB layout.
+   This table maps X11 keycodes (hardware positions) to the level-1 (unshifted,
+   no-modifier) character for a standard US layout, e.g. keycode 38 → `'a'`.
+   The raw keycode would need to be plumbed through the `KeyEvent` proto (a
+   new field) or passed alongside it to reach `TryAplShiftedKey()`.
+
+4. **Test across keyboard layouts**: Users with European or non-US layouts will
+   have different level-3 bindings. The keycode-to-base-character table must
+   either use the XKB API to query the level-1 keysym dynamically, or accept
+   that only US-layout keycodes are mapped (and document that the AltGr option
+   requires a US-layout base or a custom XKB configuration that leaves
+   AltGr+key unbound).
+
+This is non-trivial and crosses the IBus/session boundary, so it is deferred
+to a post-POC release.
 
 ### Step 2.5: Remove Japanese modes for early-access release
 
@@ -981,6 +1035,6 @@ Summary of Phases
 | Phase | Scope | Platform | Status | Key Deliverable |
 |-------|-------|----------|--------|-----------------|
 | 1 | Minimal POC | Linux | **Done** (2026-02-15) | Ctrl+key → APL glyph via IBus/Wayland/KDE |
-| 2 | Polish | Linux | In progress (2.0–2.2 done) | Shifted glyphs, configurable key, remove Japanese UI, full layout |
+| 2 | Polish | Linux | In progress (2.0–2.4 done) | Shifted glyphs, configurable key (Ctrl/Alt), remove Japanese UI, full layout |
 | 3 | Cross-platform | Win/Mac/Ride | Pending | TSF + IMK integration, Ride verification |
 | 4 | Advanced | All | Pending | Keyword search, idioms, composition, overlay |
