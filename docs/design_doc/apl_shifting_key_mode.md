@@ -881,6 +881,38 @@ Suggested investigation steps:
 - If viable, add `SUPER = 8192` to `ModifierKey`, emit it from the translator,
   and add `APL_SHIFT_SUPER = 4` to `AplShiftingKey`.
 
+### Step 2.4a: Fix Ctrl+key shortcuts broken when Alt is the shifting key
+
+**Problem**: When Alt is configured as the APL shifting key, standard
+Ctrl+key application shortcuts (e.g. Ctrl+A to select all) stop working.
+The root cause is likely in `TryAplShiftedKey()`: the function checks
+whether the **configured** shifting key is present in the modifier list,
+but the unshifted-passthrough path added in Step 2.2 commits printable ASCII
+characters directly. If any part of the intercept logic fires on keys that
+carry Ctrl (but not Alt), those keystrokes are consumed by the IME and never
+reach the application.
+
+**Expected behaviour**: With Alt as the shifting key, only Alt+key
+combinations should be intercepted by `TryAplShiftedKey()`. Any keystroke
+that does **not** carry the configured shifting modifier (including all
+Ctrl+key combinations) must be returned unconsumed so the application can
+handle them normally.
+
+**Fix**: Audit `TryAplShiftedKey()` to ensure:
+1. The shifting-modifier check happens **before** any passthrough commit.
+2. Keystrokes carrying a non-shifting modifier (Ctrl, Super, …) while Alt is
+   the configured shifting key are explicitly passed through.
+
+**Files**: `src/session/session.cc`, `src/session/apl_keymap.cc`
+
+> **Known side-effect — deferred investigation**: When Alt is the shifting
+> key, pressing Alt+key correctly produces an APL glyph, but the Alt keypress
+> also activates the application menu bar in some apps (e.g. VSCode on X11).
+> This is a platform-level behaviour of Alt in GUI toolkits and is outside the
+> IME's control. To be investigated in a future release; potential mitigations
+> include preferring AltGr or Ctrl as the shifting key in documentation, or
+> suppressing the Alt-release event at the IBus layer (if feasible).
+
 ### Step 2.5: Remove Japanese modes for early-access release
 
 For the early-access POC, hide all Japanese composition modes from the IBus
@@ -899,41 +931,44 @@ entries from the array.
 Change the default/fallback composition mode (used when the engine first
 starts and no saved mode is found) from HIRAGANA to APL.
 
-### Step 2.6: Complete the glyph table
+### Step 2.6: Verify glyph table correctness
 
-Fill out the full APL keyboard layout covering all standard glyphs. Reference
-layouts: Dyalog US, GNU APL, IBM APL2.
+Review the existing APL glyph mappings in `src/session/apl_keymap.cc` against
+the Dyalog US keyboard layout to confirm every entry is correct before moving
+on to cross-platform work. Flag any misassignments or missing glyphs and
+correct them. Reference layouts: Dyalog US, GNU APL, IBM APL2.
 
-### Step 2.7: Externalize the glyph table
+### Step 2.7: Externalize the glyph table — *Design investigation (not prototype scope)*
 
-Move the glyph mapping from C++ code to a data file
-(e.g., `src/data/apl/apl_keyboard.tsv`) so it can be edited without
-recompilation. Format:
+Externalising the glyph mapping to a data file
+(e.g., `src/data/apl/apl_keyboard.tsv`) would allow users to customise
+layouts without recompiling. However, this adds complexity (file loading,
+error handling, packaging) that is not needed for the prototype.
 
-```
-# modifier  key  glyph  name
-ctrl	a	⍺	alpha
-ctrl	w	⍵	omega
-ctrl+shift	a	⍶	alpha underbar
-...
-```
+This step is deferred to design investigation. Before implementing, consider:
+- Whether runtime configurability is actually required, or whether a
+  compile-time rebuild is acceptable for advanced users.
+- How the data file would be installed and located at runtime (XDG data dirs,
+  bundled resource, etc.).
+- Whether the existing Mozc `Table` / preedit-table infrastructure can be
+  reused rather than building a new loader.
 
-Load this in `Table` or a new `AplTable` class at startup.
+No code changes in this phase.
 
-### Step 2.8: Handle preedit interaction
+### Step 2.8: Handle preedit interaction — *Not needed*
 
-When the user presses Ctrl+A while there is uncommitted preedit text:
-- Option A: Commit preedit first, then insert APL glyph
-- Option B: Cancel preedit, insert APL glyph
-- Option C: Insert APL glyph into preedit
+This step was written to handle the case where shifting-key input fires while
+uncommitted preedit text is visible. However, Step 2.2 already commits all
+printable ASCII keystrokes directly, bypassing the Composer entirely when APL
+mode is active. This means the preedit buffer is always empty in APL mode —
+there is no uncommitted text to interact with. Step 2.8 is therefore a no-op
+and will not be implemented.
 
-Option A is most intuitive. Implement by calling `CommitPreedit()` before
-inserting the APL result.
+### Step 2.9: Visual feedback — **Verified ✓**
 
-### Step 2.9: Visual feedback
-
-When in APL mode, show "APL" in the language bar with a distinctive icon.
-Consider showing the APL keyboard layout as a tooltip or floating window.
+The IBus language bar shows "⍺" when APL mode is active (implemented as part
+of Step 2.1c). This is sufficient for the prototype. Showing the APL keyboard
+layout as a tooltip or floating window is deferred to Phase 4 (Step 4.4).
 
 Phase 3: Cross-Platform Support
 --------------------------------
@@ -1067,6 +1102,6 @@ Summary of Phases
 | Phase | Scope | Platform | Status | Key Deliverable |
 |-------|-------|----------|--------|-----------------|
 | 1 | Minimal POC | Linux | **Done** (2026-02-15) | Ctrl+key → APL glyph via IBus/Wayland/KDE |
-| 2 | Polish | Linux | In progress (2.0–2.4 done) | Shifted glyphs, configurable key (Ctrl/Alt), remove Japanese UI, full layout |
+| 2 | Polish | Linux | In progress (2.0–2.5 done, 2.9 done) | Fix Alt Ctrl+key regression (2.4a), verify glyph table (2.6) |
 | 3 | Cross-platform | Win/Mac/Ride | Pending | TSF + IMK integration, Ride verification |
 | 4 | Advanced | All | Pending | Keyword search, idioms, composition, overlay |
