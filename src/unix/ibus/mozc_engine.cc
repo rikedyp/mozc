@@ -331,8 +331,10 @@ void MozcEngine::Enable(IbusEngineWrapper *engine) {
   { FILE* f = fopen("/tmp/mozc_lifecycle.txt", "a");
     if (f) { fprintf(f, "Enable: config mode=%d (NUM_OF=%d)\n", mode, commands::NUM_OF_COMPOSITIONS); fclose(f); } }
   if (mode == commands::NUM_OF_COMPOSITIONS) {
-    // Do nothing.
-  } else {
+    // No saved config; default to APL mode for the early-access release.
+    mode = commands::APL;
+  }
+  {
     commands::SessionCommand command;
     if (mode == commands::DIRECT) {
       command.set_type(commands::SessionCommand::TURN_OFF_IME);

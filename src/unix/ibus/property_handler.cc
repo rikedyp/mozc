@@ -64,6 +64,8 @@ struct MozcEngineProperty {
 };
 
 // The list of properties used in ibus-mozc.
+// For the early-access APL release, only Direct and APL modes are exposed.
+// Japanese modes remain in the binary but are not shown in the menu.
 constexpr MozcEngineProperty kMozcEngineProperties[] = {
     {
         commands::DIRECT,
@@ -71,41 +73,6 @@ constexpr MozcEngineProperty kMozcEngineProperties[] = {
         "Direct input",
         "A",
         "direct.png",
-    },
-    {
-        commands::HIRAGANA,
-        "InputMode.Hiragana",
-        "Hiragana",
-        "あ",
-        "hiragana.png",
-    },
-    {
-        commands::FULL_KATAKANA,
-        "InputMode.Katakana",
-        "Katakana",
-        "ア",
-        "katakana_full.png",
-    },
-    {
-        commands::HALF_ASCII,
-        "InputMode.Latin",
-        "Latin",
-        "_A",
-        "alpha_half.png",
-    },
-    {
-        commands::FULL_ASCII,
-        "InputMode.WideLatin",
-        "Wide Latin",
-        "Ａ",
-        "alpha_full.png",
-    },
-    {
-        commands::HALF_KATAKANA,
-        "InputMode.HalfWidthKatakana",
-        "Half width katakana",
-        "_ｱ",
-        "katakana_half.png",
     },
     {
         commands::APL,
@@ -182,7 +149,7 @@ PropertyHandler::PropertyHandler(
       prop_mozc_tool_(nullptr),
       client_(client),
       translator_(std::move(translator)),
-      original_composition_mode_(commands::HIRAGANA),
+      original_composition_mode_(commands::APL),
       is_activated_(is_active_on_launch),
       is_disabled_(false) {
   commands::SessionCommand command;
