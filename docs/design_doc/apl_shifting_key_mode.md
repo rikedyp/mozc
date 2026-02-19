@@ -849,6 +849,38 @@ required across the IBus frontend and session layers:
 This is non-trivial and crosses the IBus/session boundary, so it is deferred
 to a post-POC release.
 
+#### Super (Windows key) — not yet supported; investigation needed
+
+**TODO**: Investigate whether Super (Windows/Meta key, `IBUS_MOD4_MASK`) can
+be supported as an APL shifting key on Linux.
+
+Current blockers:
+
+1. **Blanket filter in `key_event_handler.cc`**: `GetKeyEvent()` discards any
+   event with `IBUS_MOD3_MASK | IBUS_MOD4_MASK | IBUS_MOD5_MASK` set. This
+   filter was added to avoid conflicting with Super+Space (the IBus
+   input-method switcher shortcut). Enabling Super requires either making this
+   filter config-aware (skip the filter when Super is the configured shifting
+   key) or verifying that Super+character events are not intercepted by the
+   desktop environment before reaching IBus.
+
+2. **Super is not in `commands::KeyEvent::ModifierKey`**: A new enum value
+   (e.g. `SUPER = 8192`) would be needed, along with detection of
+   `IBUS_MOD4_MASK` in `key_translator.cc` and `key_event_handler.cc`.
+
+3. **Desktop environment grabbing**: GNOME and KDE bind many Super+key
+   combinations to system shortcuts. The practical set of Super+character
+   combinations that survive to IBus may be very small. Empirical testing
+   across GNOME, KDE, and i3/Sway is needed before committing to this option.
+
+Suggested investigation steps:
+- On a KDE/Wayland session, check which Super+letter events actually reach
+  IBus by temporarily logging all events in `MozcEngine::ProcessKeyEvent()`.
+- Determine if removing `IBUS_MOD4_MASK` from `kExtraModMask` (or doing so
+  conditionally) breaks Super+Space or any other system shortcuts in practice.
+- If viable, add `SUPER = 8192` to `ModifierKey`, emit it from the translator,
+  and add `APL_SHIFT_SUPER = 4` to `AplShiftingKey`.
+
 ### Step 2.5: Remove Japanese modes for early-access release
 
 For the early-access POC, hide all Japanese composition modes from the IBus
