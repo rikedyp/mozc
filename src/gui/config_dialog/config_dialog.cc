@@ -167,6 +167,9 @@ ConfigDialog::ConfigDialog()
   shiftKeyModeSwitchComboBox->addItem(tr("Alphanumeric"));
   shiftKeyModeSwitchComboBox->addItem(tr("Katakana"));
 
+  aplShiftingKeyComboBox->addItem(tr("Ctrl"));
+  aplShiftingKeyComboBox->addItem(tr("Alt"));
+
   numpadCharacterFormComboBox->addItem(tr("Follow input mode"));
   numpadCharacterFormComboBox->addItem(tr("Fullwidth"));
   numpadCharacterFormComboBox->addItem(tr("Halfwidth"));
@@ -540,6 +543,7 @@ void ConfigDialog::ConvertFromProto(const config::Config &config) {
 
   SET_COMBOBOX(shiftKeyModeSwitchComboBox, ShiftKeyModeSwitch,
                shift_key_mode_switch);
+  SET_COMBOBOX(aplShiftingKeyComboBox, AplShiftingKey, apl_shifting_key);
 
   SET_CHECKBOX(useJapaneseLayout, use_japanese_layout);
 
@@ -637,6 +641,7 @@ void ConfigDialog::ConvertToProto(config::Config *config) const {
 
   GET_COMBOBOX(shiftKeyModeSwitchComboBox, ShiftKeyModeSwitch,
                shift_key_mode_switch);
+  GET_COMBOBOX(aplShiftingKeyComboBox, AplShiftingKey, apl_shifting_key);
 
   // tab4
   GET_CHECKBOX(historySuggestCheckBox, use_history_suggest);

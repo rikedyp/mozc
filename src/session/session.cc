@@ -2204,21 +2204,37 @@ bool Session::TryAplShiftedKey(commands::Command* command) {
 
   const commands::KeyEvent& key = command->input().key();
 
-  // Check whether the APL shifting key (Ctrl) is held.
-  bool has_ctrl = false;
+  // Determine which modifier acts as the APL shifting key from config.
+  // Use the server-side stored config (not the client-supplied input config,
+  // which is typically empty for key events).
+  const config::Config& config = context_->GetConfig();
+  commands::KeyEvent::ModifierKey shifting_modifier;
+  switch (config.apl_shifting_key()) {
+    case config::Config::APL_SHIFT_ALT:
+      shifting_modifier = commands::KeyEvent::ALT;
+      break;
+    case config::Config::APL_SHIFT_CTRL:
+    default:
+      shifting_modifier = commands::KeyEvent::CTRL;
+      break;
+  }
+
+  // Check whether the APL shifting key is held.
+  bool has_shifting_key = false;
   for (int i = 0; i < key.modifier_keys_size(); ++i) {
-    if (key.modifier_keys(i) == commands::KeyEvent::CTRL) {
-      has_ctrl = true;
+    if (key.modifier_keys(i) == shifting_modifier) {
+      has_shifting_key = true;
       break;
     }
   }
 
-  if (has_ctrl) {
-    // Ctrl+key / Ctrl+Shift+key: look up the APL glyph and commit directly.
-    // The IBus key translator encodes Shift into the keyval for printable keys
-    // (e.g. Ctrl+Shift+A → key_code='A'), so SHIFT is absent from
-    // modifier_keys() here.  We detect the Shift layer by trying the shifted
-    // table first; if it has no entry we fall back to the unshifted table.
+  if (has_shifting_key) {
+    // Shifting-key+key / Shifting-key+Shift+key: look up the APL glyph and
+    // commit directly.  The IBus key translator encodes Shift into the keyval
+    // for printable keys (e.g. Ctrl+Shift+A → key_code='A'), so SHIFT is
+    // absent from modifier_keys() here.  We detect the Shift layer by trying
+    // the shifted table first; if it has no entry we fall back to the
+    // unshifted table.
     if (!key.has_key_code()) return false;
     const uint32_t kc = key.key_code();
     std::optional<absl::string_view> glyph = GetAplShiftedGlyph(kc);

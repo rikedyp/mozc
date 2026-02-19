@@ -360,6 +360,14 @@ message Config {
   // Use mode indicator feature.
   optional bool use_mode_indicator = 120 [default = true];
 
+  // APL shifting key: the modifier held to produce APL glyphs.
+  // AltGr (Right Alt) is not supported in the POC — see design doc Step 2.4.
+  enum AplShiftingKey {
+    APL_SHIFT_CTRL = 0;       // Ctrl (default; standard APL convention)
+    APL_SHIFT_ALT = 1;        // Alt / Meta
+  }
+  optional AplShiftingKey apl_shifting_key = 121 [default = APL_SHIFT_CTRL];
+
   //////////////////////////////////////////////////////////////
   //
   // Cloud (300-319)
