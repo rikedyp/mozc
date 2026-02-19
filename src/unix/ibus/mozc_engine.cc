@@ -393,6 +393,21 @@ bool MozcEngine::ProcessKeyEvent(IbusEngineWrapper *engine, uint keyval,
     return false;
   }
 
+  // When Alt is the configured APL shifting key and APL mode is active,
+  // suppress bare Alt key press/release events.  Without this, the toolkit
+  // (GTK, Electron) sees Alt-down followed by Alt-up with no non-modifier key
+  // in between (because the IME consumed Alt+key), interprets that as a plain
+  // "Alt tap", and focuses the application menu bar.
+  // Both press and release must be suppressed: suppressing only the release
+  // would leave the toolkit's Alt-pressed state permanently set.
+  if (apl_shifting_key_ == config::Config::APL_SHIFT_ALT &&
+      property_handler_->GetOriginalCompositionMode() == commands::APL) {
+    if (keyval == IBUS_KEY_Alt_L || keyval == IBUS_KEY_Alt_R ||
+        keyval == IBUS_KEY_Meta_L || keyval == IBUS_KEY_Meta_R) {
+      return true;  // consume bare Alt: prevent menu-bar focus activation
+    }
+  }
+
   // layout_is_jp is only used determine Kana input with US layout.
   const absl::string_view layout = ibus_config_.GetLayout(engine->GetName());
   const bool layout_is_jp = (layout != "us");
@@ -543,6 +558,7 @@ void MozcEngine::UpdatePreeditMethod() {
   }
   preedit_method_ = config.has_preedit_method() ? config.preedit_method()
                                                 : config::Config::ROMAN;
+  apl_shifting_key_ = config.apl_shifting_key();
 }
 
 void MozcEngine::SyncData(bool force) {

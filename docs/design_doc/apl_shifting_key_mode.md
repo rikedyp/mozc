@@ -922,13 +922,40 @@ unshifted path, the configured shifting modifier cannot be in the list.
 
 **Files**: `src/session/session.cc`
 
-> **Known side-effect — deferred investigation**: When Alt is the shifting
-> key, pressing Alt+key correctly produces an APL glyph, but the Alt keypress
-> also activates the application menu bar in some apps (e.g. VSCode on X11).
-> This is a platform-level behaviour of Alt in GUI toolkits and is outside the
-> IME's control. To be investigated in a future release; potential mitigations
-> include preferring AltGr or Ctrl as the shifting key in documentation, or
-> suppressing the Alt-release event at the IBus layer (if feasible).
+#### Step 2.4b: Fix menu-bar focus activation when Alt is the shifting key — **Verified ✓**
+
+**Root cause**: When the IME consumes Alt+A (APL glyph committed), the app's
+X11 event stream looks like this:
+
+```
+Alt_L down  → ProcessKeyEvent returns false → forwarded to app
+'a'   down  → ProcessKeyEvent returns true  → consumed (APL glyph)
+'a'   up    → ProcessKeyEvent returns false → forwarded to app
+Alt_L up    → ProcessKeyEvent returns false → forwarded to app
+```
+
+The app (VSCode/Electron, GTK) tracks whether a non-modifier key was pressed
+while Alt was held. Since `'a'` down was consumed and never forwarded, the
+app sees: Alt-down, Alt-up, no non-modifier key in between → interprets as
+"Alt tapped" → focuses the menu bar.
+
+**Why suppressing only Alt-up is insufficient**: the app would see a
+permanent Alt-stuck-down state (Alt-down forwarded, but Alt-up suppressed).
+
+**Fix** (`src/unix/ibus/mozc_engine.cc`, `src/unix/ibus/mozc_engine.h`):
+Cache the `apl_shifting_key` config field in `MozcEngine::UpdatePreeditMethod()`
+alongside `preedit_method_`. In `ProcessKeyEvent`, add an early return
+that consumes bare `Alt_L`/`Alt_R`/`Meta_L`/`Meta_R` key events when:
+
+1. Alt is the configured APL shifting key (`APL_SHIFT_ALT`), and
+2. APL mode is currently active (`GetOriginalCompositionMode() == APL`)
+
+This is a deliberate trade-off: in APL mode with Alt as the shifting key,
+tapping Alt to open the menu bar is disabled. This is acceptable because the
+user has chosen to dedicate Alt to APL input; using Alt for menu navigation
+simultaneously is not a supported use case.
+
+**Files**: `src/unix/ibus/mozc_engine.cc`, `src/unix/ibus/mozc_engine.h`
 
 ### Step 2.5: Remove Japanese modes for early-access release
 
@@ -1119,6 +1146,6 @@ Summary of Phases
 | Phase | Scope | Platform | Status | Key Deliverable |
 |-------|-------|----------|--------|-----------------|
 | 1 | Minimal POC | Linux | **Done** (2026-02-15) | Ctrl+key → APL glyph via IBus/Wayland/KDE |
-| 2 | Polish | Linux | In progress (2.0–2.5 done, 2.4a done, 2.9 done) | Verify glyph table (2.6) |
+| 2 | Polish | Linux | In progress (2.0–2.5 done, 2.4a–b done, 2.9 done) | Verify glyph table (2.6) |
 | 3 | Cross-platform | Win/Mac/Ride | Pending | TSF + IMK integration, Ride verification |
 | 4 | Advanced | All | Pending | Keyword search, idioms, composition, overlay |
