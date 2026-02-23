@@ -1014,6 +1014,451 @@ The IBus language bar shows "⍺" when APL mode is active (implemented as part
 of Step 2.1c). This is sufficient for the prototype. Showing the APL keyboard
 layout as a tooltip or floating window is deferred to Phase 4 (Step 4.4).
 
+### Step 2.10: Comprehensive shifting key selection — multi-key checklist
+
+**Goal**: Replace the current two-option dropdown (Ctrl / Alt) with a checklist
+of all candidate shifting keys. Users can enable any combination simultaneously.
+This is a prerequisite for supporting the full range of keys that XKB-based APL
+implementations (GNU APL, Dyalog) traditionally support.
+
+#### Protocol change
+
+Replace the `AplShiftingKey` enum field in `src/protocol/config.proto` with a
+structured message:
+
+```protobuf
+// src/protocol/config.proto
+message AplShiftingKeySet {
+  bool left_ctrl   = 1;
+  bool right_ctrl  = 2;
+  bool left_alt    = 3;
+  bool right_alt   = 4;   // AltGr / ISO Level 3 Shift
+  bool left_super  = 5;   // Left Windows key
+  bool right_super = 6;   // Right Windows key
+  bool left_shift  = 7;
+  bool right_shift = 8;
+  bool caps_lock   = 9;   // latch — CAPS flag in modifier state
+  bool menu_key    = 10;  // App/Menu key — latch/toggle only
+}
+```
+
+Default: `left_ctrl = true, right_ctrl = true` (matches current behaviour).
+Remove or deprecate the existing `AplShiftingKey` enum. `TryAplShiftedKey()` and
+`MozcEngine::UpdatePreeditMethod()` are updated to read the new message.
+
+#### Qt config dialog change
+
+In `src/gui/config_dialog/`, replace the APL shifting key dropdown with a checkbox
+group, arranged in keyboard order:
+
+```
+APL Shifting Keys
+┌──────────────────────────────────────────────────┐
+│ [ ] Left Shift        [ ] Right Shift             │
+│ [✓] Left Ctrl         [✓] Right Ctrl              │
+│ [ ] Left Alt          [ ] Right Alt (AltGr)  ⚠   │
+│ [ ] Left Windows  ⚠   [ ] Right Windows  ⚠        │
+│ [ ] Caps Lock  ★      [ ] Menu Key  ★             │
+└──────────────────────────────────────────────────┘
+  ⚠ May require additional system configuration — see Help
+  ★ Latch/toggle mode (press once to activate; not a hold-down key)
+```
+
+#### Per-key investigation summary
+
+| Key | `ModifierKey` flag | Current status | Estimated effort |
+|-----|--------------------|----------------|------------------|
+| Left Ctrl | `LEFT_CTRL (32)` | Working (both Ctrl keys together) | Trivial — check `LEFT_CTRL` specifically |
+| Right Ctrl | `RIGHT_CTRL (256)` | Working (both Ctrl keys together) | Trivial — check `RIGHT_CTRL` specifically |
+| Left Alt | `LEFT_ALT (64)` | Working (both Alt keys together) | Trivial — check `LEFT_ALT` specifically |
+| Right Alt (AltGr) | `RIGHT_ALT (512)` | Blocked — see Step 2.4 | High — MOD5 filter + keycode approach; or XKB workaround (see below) |
+| Left Windows | Not in enum (MOD4) | Blocked — see Step 2.4 | Medium — add `SUPER_L` to enum + empirical investigation |
+| Right Windows | Not in enum (MOD4) | Blocked — see Step 2.4 | Medium — same as Left Windows |
+| Left Shift | `LEFT_SHIFT (128)` | Not yet implemented | Low (with caveats — see note) |
+| Right Shift | `RIGHT_SHIFT (1024)` | Not yet implemented | Low (with caveats — see note) |
+| Caps Lock | `CAPS (2048)` | Not yet implemented | Low — CAPS flag already available in the protocol |
+| Menu Key | No modifier flag | Not yet implemented | Medium — latch mechanism differs from hold-down keys |
+
+#### Per-key notes
+
+**Left Ctrl / Right Ctrl (independent selection)**
+
+Currently `TryAplShiftedKey()` checks for `commands::KeyEvent::CTRL`, which is set
+for either Ctrl key. To support independent left/right selection, check `LEFT_CTRL`
+and `RIGHT_CTRL` separately. **Investigation needed**: audit `key_translator.cc` to
+determine whether pressing Left Ctrl emits only `LEFT_CTRL`, or both `LEFT_CTRL` and
+the combined `CTRL` flag simultaneously. If the combined flag is always set alongside
+the specific flag, enabling Left-only requires checking that `LEFT_CTRL` is present
+*and* `RIGHT_CTRL` is absent.
+
+**Left Alt / Right Alt (independent selection)**
+
+Same flag-combination question as Ctrl — audit `key_translator.cc`. Left Alt has no
+XKB complications. Right Alt (AltGr) is the complex case documented in Step 2.4.
+
+**Left Shift / Right Shift**
+
+Using Shift as the APL shifting key means Shift+A → ⍺ rather than 'A'. This matches
+the "upper APL layer" on physical APL keyboard overlays. Keys without an APL shifted
+assignment must fall through to normal behaviour (capital, punctuation), so
+`TryAplShiftedKey()` must return `false` when no glyph is found rather than
+suppressing the keystroke. **Caveat**: the unshifted-passthrough guard (Step 2.4a)
+currently passes any event with no non-shift modifiers through directly; when Shift
+itself is the configured shifting key, this guard must be updated so that Shift+key
+triggers the APL glyph lookup instead.
+
+**Caps Lock (latch mode)**
+
+`commands::KeyEvent::CAPS (2048)` is already in the `ModifierKey` enum and reflects
+the Caps Lock *state* (LED on/off), not a held key. Checking for `CAPS` in the
+modifier list inside `TryAplShiftedKey()` activates APL shifting with **no XKB
+changes required**. The IBus layer already delivers the CAPS flag on every keystroke
+when Caps Lock is on.
+
+The Caps Lock key-press keysym (`IBUS_Caps_Lock`) arrives as a separate event.
+Verify whether it should be consumed by the IME (preventing a double-toggle if the
+user presses Caps Lock while already in APL mode) or passed through unchanged.
+
+**Menu Key (App Key — latch/toggle)**
+
+The Menu/App key generates keysym `IBUS_Menu` (0xFF67) with no modifier flags. It
+cannot be held down, so it cannot function as a hold-down shifting modifier. Instead
+it acts as a **mode-toggle latch**: first press activates APL mode; next press
+deactivates it (equivalent to switching modes in the IBus panel). This is a separate
+intercept path — detect the `IBUS_Menu` keysym in the key-event handler and dispatch
+a `SWITCH_COMPOSITION_MODE` command. Independent of the glyph lookup path;
+`TryAplShiftedKey()` is not involved.
+
+**Left Windows / Right Windows (Super)**
+
+Blocked by (1) the `kExtraModMask` filter in `key_event_handler.cc` discarding
+`IBUS_MOD4_MASK` events, and (2) desktop-environment grabbing of most Super+key
+combinations before they reach IBus. Investigation steps are documented in Step 2.4.
+If the blanket filter is made config-aware, new `SUPER_L` / `SUPER_R` values must be
+added to `commands::KeyEvent::ModifierKey` and emitted from `key_translator.cc`.
+
+#### XKB hybrid approach — a workaround for hard-to-intercept keys
+
+For keys that cannot be cleanly intercepted at the IBus level (AltGr, Super, Caps
+Lock, Menu Key), an alternative is to ship a **custom XKB symbols file** alongside
+the IBus component. This file defines APL glyphs at the appropriate keyboard level
+for the chosen shifting key, operating entirely within the XKB layer. The IBus
+component is not involved for glyphs produced this way.
+
+**Installation path**: copy to `/usr/share/X11/xkb/symbols/apl` (system-wide) or
+`~/.config/xkb/symbols/apl` (user-space; supported by libxkbcommon ≥ 1.0 and most
+modern compositors). Activated via `setxkbmap -layout us+apl` or through GNOME/KDE
+keyboard settings.
+
+**How it resolves specific blockers**:
+
+- **AltGr**: Define APL glyphs at ISO Level 3. XKB resolves AltGr+key to the APL
+  Unicode codepoint and delivers it to the application directly — no changes to
+  `key_event_handler.cc` needed for this shifting-key option.
+- **Caps Lock**: XKB can remap Caps Lock to `ISO_Level3_Shift` or a custom modifier
+  (`Hyper_L`). Remapping it to ISO Level 3 makes Caps Lock and AltGr
+  interchangeable APL shifters at the XKB level.
+- **Super**: Some Super+letter combinations survive to XKB before the desktop
+  environment claims them (especially on tiling window managers). An XKB symbols
+  file can define APL glyphs for the surviving combinations.
+- **Menu Key**: Can be remapped to a modifier in XKB (precedent: `compose:menu`
+  option); an APL-shift variant could follow the same pattern.
+
+**Relationship to IBus mode**: The XKB approach works independently of whether the
+user has selected APL mode in IBus. A combined deployment could use:
+- IBus mode for features requiring composition (keyword search, idiom lookup —
+  Phase 4) and for Ctrl/Alt shifting where IBus interception already works.
+- XKB symbols for raw glyph input via AltGr/Super/Caps Lock, even when IBus APL
+  mode is not active, or as a fallback on systems where the IBus intercept is
+  unreliable.
+
+**Packaging**: include the XKB symbols file in the Mozc APL package; install via
+the post-install script alongside the IBus component. Offer a user-space path
+(`~/.config/xkb/`) for users without system package permissions.
+
+**Investigation needed**: determine whether a single XKB symbols file can expose
+multiple shifting-key options via XKB options (so users choose at the `setxkbmap`
+or GNOME/KDE level), or whether separate files per shifting key are required. Confirm
+that `~/.config/xkb/` is honoured by the X server and compositor versions in the
+target distributions.
+
+#### Files changed
+
+| File | Change |
+|------|--------|
+| `src/protocol/config.proto` | Replace `AplShiftingKey` enum with `AplShiftingKeySet` message |
+| `src/session/session.cc` | Update `TryAplShiftedKey()` to iterate the key set; add Caps Lock CAPS-flag check; add Menu Key latch path |
+| `src/session/session.h` | Update cached config type if needed |
+| `src/gui/config_dialog/config_dialog.{cc,h}` | Replace dropdown with checkbox group |
+| `src/gui/config_dialog/config_dialog.ui` | Add checkbox group widget |
+| `src/unix/ibus/mozc_engine.cc` | Cache `AplShiftingKeySet` instead of single enum in `UpdatePreeditMethod()`; add Menu Key intercept |
+| `data/xkb/apl` | New: XKB symbols file (APL glyphs at configured level; see XKB hybrid note) |
+| `install.sh` | Install XKB symbols file to system or user path |
+
+### Step 2.11: Transparent XKB configuration from the Qt dialog
+
+**Goal**: When the user ticks an XKB-backed shifting key (AltGr, Super, or Caps Lock
+via XKB remapping) in the Qt checklist, the IME applies the XKB configuration
+automatically — detecting the desktop environment and using the appropriate mechanism.
+Unticking reverts the change. No manual `setxkbmap` or config-file editing is
+required. The user sees one unified interface regardless of what happens underneath.
+
+#### Which keys need XKB management
+
+Some keys can be handled entirely within IBus (no XKB involvement); others require
+XKB changes. This determines which checkboxes trigger XKB management on Apply.
+
+| Key | Mechanism | XKB management needed |
+|-----|-----------|-----------------------|
+| Left/Right Ctrl | IBus (`LEFT_CTRL` / `RIGHT_CTRL` flags) | No |
+| Left/Right Alt | IBus (`LEFT_ALT` / `RIGHT_ALT` flags) | No |
+| Left/Right Shift | IBus (`LEFT_SHIFT` / `RIGHT_SHIFT` flags) | No |
+| Menu Key | IBus (keysym `IBUS_Menu`) | No |
+| Caps Lock | IBus (`CAPS` state flag) — preferred path | No (IBus path) |
+| Caps Lock via XKB | XKB remap to `ISO_Level3_Shift` | Yes (XKB path, optional alternative) |
+| Right Alt (AltGr) | XKB Level 3 — preferred path | Yes |
+| Left/Right Super | XKB (if viable) | Yes |
+
+The IBus path for Caps Lock (checking the `CAPS` flag — Step 2.10) works without
+any XKB changes and should be the default. The XKB path (remapping Caps Lock to a
+modifier) is an alternative for users who find the IBus path unreliable, or who want
+the XKB and IBus behaviours consistent.
+
+#### Desktop environment and session detection
+
+Detect at runtime using environment variables, before attempting any XKB operation:
+
+```cpp
+// src/gui/config_dialog/xkb_configurator.cc
+enum class SessionType  { X11, Wayland, Unknown };
+enum class DesktopEnv   { GNOME, KDE, Sway, Other };
+
+SessionType DetectSession() {
+  const char* t = getenv("XDG_SESSION_TYPE");
+  if (!t) return SessionType::Unknown;
+  if (absl::EqualsIgnoreCase(t, "wayland")) return SessionType::Wayland;
+  return SessionType::X11;
+}
+
+DesktopEnv DetectDesktop() {
+  const char* d = getenv("XDG_CURRENT_DESKTOP");
+  if (!d) return DesktopEnv::Other;
+  std::string s(d);
+  if (s.find("GNOME") != std::string::npos) return DesktopEnv::GNOME;
+  if (s.find("KDE")   != std::string::npos) return DesktopEnv::KDE;
+  if (s.find("sway")  != std::string::npos ||
+      s.find("Hyprland") != std::string::npos) return DesktopEnv::Sway;
+  return DesktopEnv::Other;
+}
+```
+
+Detection matrix:
+
+| Session | Desktop | Configuration method | Persistent? |
+|---------|---------|----------------------|-------------|
+| `x11` | any | `setxkbmap -option apl:altgr` (subprocess) | No — also write autostart (see below) |
+| `wayland` | GNOME | `gsettings` (subprocess or GLib API) | Yes |
+| `wayland` | KDE | `kwriteconfig5`/`6` + DBus reload | Yes |
+| `wayland` | Sway/Hyprland | `swaymsg`/`hyprctl input` | No — also write include file |
+| `wayland` | other/unknown | Show manual-instructions dialog | n/a |
+
+#### XKB symbols file structure
+
+The symbols file uses named variants so that different shifting keys map to distinct
+XKB option strings. All variants share the same glyph table; only the modifier
+binding differs.
+
+```
+// data/xkb/apl
+// Installed to /usr/share/X11/xkb/symbols/apl (system)
+// or ~/.config/xkb/symbols/apl (user-space, libxkbcommon ≥ 1.0)
+
+partial alphanumeric_keys
+xkb_symbols "altgr" {
+    // Right Alt (AltGr) activates APL glyphs at Level 3
+    include "level3(ralt_switch)"
+    key <AD01> { [ q, Q, 0x1000FD3 ] };  // ⍳  (APL iota)
+    key <AD02> { [ w, W, 0x1000279 ] };  // ⍹  (APL omega underbar)
+    // ... full layout (Unicode codepoints for all APL glyphs)
+};
+
+partial alphanumeric_keys modifier_keys
+xkb_symbols "caps" {
+    // Caps Lock remapped to APL shift (Level 3)
+    include "level3(caps_switch)"
+    key <AD01> { [ q, Q, 0x1000FD3 ] };
+    // ... same glyph assignments
+};
+
+partial alphanumeric_keys modifier_keys
+xkb_symbols "super_l" {
+    // Left Super as APL shift — experimental; see Super investigation note
+    include "level3(lwin_switch)"
+    key <AD01> { [ q, Q, 0x1000FD3 ] };
+    // ...
+};
+```
+
+The option strings used (`apl:altgr`, `apl:caps`, `apl:super_l`) must be registered
+in a rules fragment so that `setxkbmap -option` and GNOME/KDE option pickers can
+resolve them. Ship a rules XML fragment:
+
+```xml
+<!-- data/xkb/apl.xml — merged into /usr/share/X11/xkb/rules/evdev.xml by install.sh -->
+<optionList>
+  <group allowMultipleSelection="false">
+    <configItem><name>apl</name>
+      <description>APL shifting key</description>
+    </configItem>
+    <option><configItem><name>apl:altgr</name>
+      <description>Right Alt (AltGr) as APL shift</description>
+    </configItem></option>
+    <option><configItem><name>apl:caps</name>
+      <description>Caps Lock as APL shift</description>
+    </configItem></option>
+    <option><configItem><name>apl:super_l</name>
+      <description>Left Super (Windows key) as APL shift</description>
+    </configItem></option>
+  </group>
+</optionList>
+```
+
+**Investigation needed**: merging into `evdev.xml` without overwriting it requires
+careful XML editing in `install.sh`. Alternatively, newer XKB implementations support
+drop-in files in `/usr/share/X11/xkb/rules/evdev.d/` — check whether target
+distributions support this. For user-space installation (`~/.config/xkb/`), confirm
+that the local rules file is honoured by the compositor (verified in libxkbcommon ≥
+1.5.0 but not all compositors expose the user XKB path to their compositor-level
+rule evaluation).
+
+#### Configuration application — per environment
+
+Applied via a helper class `XkbConfigurator` with a simple interface:
+
+```cpp
+// src/gui/config_dialog/xkb_configurator.h
+class XkbConfigurator {
+ public:
+  // Read current active XKB options (excluding any apl:* options).
+  // Stored before first Apply so they can be restored on revert.
+  static std::string GetCurrentOptions();
+
+  // Add or remove apl:* options and apply.
+  // options_to_add: e.g. {"apl:altgr"}
+  // Returns true on success; false if the DE is unsupported (caller shows dialog).
+  static bool Apply(const std::vector<std::string>& apl_options);
+
+  // Remove all apl:* options and restore the baseline saved by GetCurrentOptions().
+  static bool Revert();
+};
+```
+
+**X11 (any desktop)**:
+
+```sh
+# Read current options:
+setxkbmap -query  # parse "options:" line
+
+# Apply:
+setxkbmap -option ""                     # clear first to avoid accumulation
+setxkbmap -option "existing,apl:altgr"  # reapply with APL option added
+
+# Session persistence — write autostart desktop file:
+~/.config/autostart/mozc-apl-xkb.desktop
+  Exec=setxkbmap -option "existing,apl:altgr"
+```
+
+**Wayland + GNOME**:
+
+```sh
+# Read:
+gsettings get org.gnome.desktop.input-sources xkb-options
+
+# Apply (add apl:altgr to existing list):
+gsettings set org.gnome.desktop.input-sources xkb-options \
+  "$(gsettings get ... | sed "s/]/, 'apl:altgr']/")"
+
+# Persistent by default (dconf storage).
+```
+
+**Wayland + KDE (Plasma 5/6)**:
+
+```sh
+# Read ~/.config/kxkbrc [Layout] Options=...
+# Write updated value:
+kwriteconfig6 --file kxkbrc --group Layout --key Options "existing,apl:altgr"
+
+# Trigger live reload:
+dbus-send --session --type=method_call \
+  --dest=org.kde.keyboard /Layouts org.kde.KeyboardLayouts.reloadConfig
+
+# Persistent (kxkbrc is read on login).
+```
+
+**Wayland + Sway / Hyprland**:
+
+```sh
+# Apply for current session (not persistent):
+swaymsg input type:keyboard xkb_options "existing,apl:altgr"
+
+# Persistence: write to a dedicated include file:
+~/.config/sway/conf.d/mozc-apl-xkb.conf
+  input type:keyboard { xkb_options "existing,apl:altgr" }
+# Tell user to add `include ~/.config/sway/conf.d/*.conf` to main config
+# if not already present.
+```
+
+**Wayland + unknown desktop**:
+
+Show a non-modal information dialog:
+
+```
+APL shifting key (AltGr) requires a keyboard configuration change.
+Your desktop environment was not recognised for automatic configuration.
+
+To enable manually, run:
+    setxkbmap -option apl:altgr
+
+To make the change permanent, add the above command to your
+session startup script (~/.profile, ~/.xprofile, or equivalent).
+```
+
+Mark the checkbox with ⚠ in the UI and keep it enabled so the user can still store
+the preference in `config.proto` (the IBus side will still function for keys that
+are reachable via IBus; only the XKB-level behaviour is unavailable).
+
+#### Reverting XKB changes
+
+Before the first Apply, `XkbConfigurator::GetCurrentOptions()` saves the baseline
+option string (without any `apl:*` entries). On revert (user unticks all XKB-backed
+keys, or clicks Cancel after Apply):
+
+1. Remove all `apl:*` options from the saved baseline.
+2. Re-apply via the same DE-specific method.
+3. Remove or update the autostart/include file.
+
+#### Qt dialog integration
+
+Changes are applied only when the user clicks **OK** or **Apply** in the config
+dialog, not on individual checkbox toggles. The dialog's existing Apply handler:
+
+1. Saves `AplShiftingKeySet` to `config.proto` via the normal config write path
+   (this covers all IBus-native keys immediately).
+2. Computes the set of XKB options implied by the new `AplShiftingKeySet`
+   (e.g. `right_alt=true` → `"apl:altgr"`; `left_super=true` → `"apl:super_l"`).
+3. Calls `XkbConfigurator::Apply(options)` and shows an error dialog on failure.
+
+#### Files changed
+
+| File | Change |
+|------|--------|
+| `src/gui/config_dialog/xkb_configurator.{cc,h}` | New: DE detection + per-DE apply/revert logic |
+| `src/gui/config_dialog/config_dialog.cc` | Call `XkbConfigurator::Apply()` on Apply/OK; call `Revert()` on Cancel if already applied |
+| `src/gui/config_dialog/BUILD.bazel` | Add `xkb_configurator` target |
+| `data/xkb/apl` | XKB symbols file with `altgr`, `caps`, `super_l` variants |
+| `data/xkb/apl.xml` | XKB rules fragment for option registration |
+| `install.sh` | Install XKB files; merge rules fragment into `evdev.xml` or drop into `evdev.d/` |
+
 Phase 3: Cross-Platform Support
 --------------------------------
 
@@ -1146,6 +1591,6 @@ Summary of Phases
 | Phase | Scope | Platform | Status | Key Deliverable |
 |-------|-------|----------|--------|-----------------|
 | 1 | Minimal POC | Linux | **Done** (2026-02-15) | Ctrl+key → APL glyph via IBus/Wayland/KDE |
-| 2 | Polish | Linux | In progress (2.0–2.5 done, 2.4a–b done, 2.9 done) | Verify glyph table (2.6) |
+| 2 | Polish | Linux | In progress (2.0–2.5 done, 2.4a–b done, 2.9 done) | Verify glyph table (2.6); full shifting key checklist + transparent XKB config (2.10–2.11) |
 | 3 | Cross-platform | Win/Mac/Ride | Pending | TSF + IMK integration, Ride verification |
 | 4 | Advanced | All | Pending | Keyword search, idioms, composition, overlay |
