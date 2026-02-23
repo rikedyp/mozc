@@ -48,6 +48,7 @@ mozc_cc_library(
     name = "apl_keymap",
     srcs = ["apl_keymap.cc"],
     hdrs = ["apl_keymap.h"],
+    visibility = ["//unix/ibus:__pkg__"],
     deps = [
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings",

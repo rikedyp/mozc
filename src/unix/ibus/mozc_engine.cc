@@ -67,6 +67,8 @@
 #include "unix/ibus/preedit_handler.h"
 #include "unix/ibus/property_handler.h"
 #include "unix/ibus/surrounding_text_util.h"
+#include "base/container/flat_map.h"
+#include "session/apl_keymap.h"
 
 ABSL_FLAG(bool, use_mozc_renderer, true,
           "The engine tries to use mozc_renderer if available.");
@@ -77,6 +79,38 @@ namespace {
 
 // The ID for candidates which are not associated with texts.
 const int32_t kBadCandidateId = -1;
+
+// Maps Linux evdev scancodes to unshifted/shifted ASCII character pairs using
+// the standard US QWERTY physical layout.
+// IBus passes raw evdev scancodes (linux/input-event-codes.h KEY_* values),
+// not X11 keycodes (evdev+8). Layout-independent: reflects physical key
+// position, which is correct for APL since APL layouts are QWERTY-based.
+struct AplKeyChars { char unshifted; char shifted; };
+std::optional<AplKeyChars> AplKeycodeToChars(uint keycode) {
+  static constexpr auto kMap = CreateFlatMap<uint, AplKeyChars>({
+      // Number row (KEY_1=2..KEY_0=11, KEY_MINUS=12, KEY_EQUAL=13, KEY_GRAVE=41)
+      {2,  {'1', '!'}}, {3,  {'2', '@'}}, {4,  {'3', '#'}}, {5,  {'4', '$'}},
+      {6,  {'5', '%'}}, {7,  {'6', '^'}}, {8,  {'7', '&'}}, {9,  {'8', '*'}},
+      {10, {'9', '('}}, {11, {'0', ')'}}, {12, {'-', '_'}}, {13, {'=', '+'}},
+      {41, {'`', '~'}},
+      // QWERTY row (KEY_Q=16..KEY_P=25, KEY_LEFTBRACE=26, KEY_RIGHTBRACE=27)
+      {16, {'q', 'Q'}}, {17, {'w', 'W'}}, {18, {'e', 'E'}}, {19, {'r', 'R'}},
+      {20, {'t', 'T'}}, {21, {'y', 'Y'}}, {22, {'u', 'U'}}, {23, {'i', 'I'}},
+      {24, {'o', 'O'}}, {25, {'p', 'P'}}, {26, {'[', '{'}}, {27, {']', '}'}},
+      {43, {'\\', '|'}},  // KEY_BACKSLASH=43
+      // ASDF row (KEY_A=30..KEY_L=38, KEY_SEMICOLON=39, KEY_APOSTROPHE=40)
+      {30, {'a', 'A'}}, {31, {'s', 'S'}}, {32, {'d', 'D'}}, {33, {'f', 'F'}},
+      {34, {'g', 'G'}}, {35, {'h', 'H'}}, {36, {'j', 'J'}}, {37, {'k', 'K'}},
+      {38, {'l', 'L'}}, {39, {';', ':'}}, {40, {'\'', '"'}},
+      // ZXCV row (KEY_Z=44..KEY_M=50, KEY_COMMA=51, KEY_DOT=52, KEY_SLASH=53)
+      {44, {'z', 'Z'}}, {45, {'x', 'X'}}, {46, {'c', 'C'}}, {47, {'v', 'V'}},
+      {48, {'b', 'B'}}, {49, {'n', 'N'}}, {50, {'m', 'M'}},
+      {51, {',', '<'}}, {52, {'.', '>'}}, {53, {'/', '?'}},
+  });
+  const AplKeyChars* chars = kMap.FindOrNull(keycode);
+  if (chars == nullptr) return std::nullopt;
+  return *chars;
+}
 
 // Default UI locale
 constexpr char kMozcDefaultUILocale[] = "en_US.UTF-8";
@@ -408,6 +442,32 @@ bool MozcEngine::ProcessKeyEvent(IbusEngineWrapper *engine, uint keyval,
         keyval == IBUS_KEY_Meta_L || keyval == IBUS_KEY_Meta_R) {
       return true;  // consume bare Alt: prevent menu-bar focus activation
     }
+  }
+
+  // AltGr (ISO Level 3 Shift, IBUS_MOD5_MASK) APL shifting key intercept.
+  // MOD5 events are discarded by the kExtraModMask filter in key_event_handler
+  // (added to avoid interfering with Super+Space, which uses MOD4 — MOD5 was
+  // included defensively).  Intercept them here before GetKeyEvent when APL
+  // mode is active and right_alt is the configured shifting key.
+  // We use the hardware keycode (evdev scancode+8, layout-independent physical
+  // position) instead of the keyval, which XKB has already composed into the
+  // level-3 character (e.g. AltGr+a → æ on EU layouts).
+  if ((modifiers & IBUS_MOD5_MASK) && !(modifiers & IBUS_RELEASE_MASK) &&
+      apl_shifting_key_set_.right_alt() &&
+      property_handler_->GetOriginalCompositionMode() == commands::APL) {
+    std::optional<AplKeyChars> chars = AplKeycodeToChars(keycode);
+    if (chars.has_value()) {
+      const bool is_shifted = (modifiers & IBUS_SHIFT_MASK) != 0;
+      const uint32_t kc = is_shifted ? static_cast<uint32_t>(chars->shifted)
+                                     : static_cast<uint32_t>(chars->unshifted);
+      std::optional<absl::string_view> glyph = session::GetAplShiftedGlyph(kc);
+      if (!glyph.has_value()) glyph = session::GetAplGlyph(kc);
+      if (glyph.has_value()) {
+        engine->CommitText(*glyph);
+        return true;
+      }
+    }
+    return false;
   }
 
   // layout_is_jp is only used determine Kana input with US layout.

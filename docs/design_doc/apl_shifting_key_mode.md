@@ -790,64 +790,72 @@ normal key events) and checks the appropriate modifier.
 **AltGr is not supported in the POC.** See below for the rationale and the
 approach required for a proper future implementation.
 
-#### Why AltGr cannot work in the current architecture
+#### How AltGr is implemented — **Verified ✓ (pending build)**
 
 AltGr (Right Alt) is handled as ISO Level 3 Shift by the X11 keyboard layer,
 *before* IBus receives the event. When the user presses `AltGr+a`, X11
 applies the level-3 mapping and delivers the composed character (e.g. `æ` on
-many European layouts) to IBus — not an `(AltGr, a)` pair. By the time the
-key event reaches Mozc:
+many European layouts) to IBus — not an `(AltGr, a)` pair.
+
+Two obstacles had to be overcome:
 
 1. **`key_event_handler.cc` discards the event**: `GetKeyEvent()` filters out
-   events with `IBUS_MOD5_MASK` set (the mask for AltGr / ISO Level 3 Shift),
-   returning `false` immediately. The filter exists to avoid interfering with
-   Super+Space (input method switching) and similar desktop shortcuts.
+   events with `IBUS_MOD5_MASK` set (the mask for AltGr / ISO Level 3 Shift).
+   The filter was added defensively alongside the Super+Space fix (issue #853),
+   but the actual Super+Space problem uses `IBUS_MOD4_MASK` (Super), not MOD5.
+   Removing MOD5 from the filter would cause regressions on US layouts (where
+   AltGr doesn't compose, so the keyval passes `IsAscii()` and would be
+   consumed as a plain character without any recognised modifier flag). The
+   solution is to intercept MOD5 events in `mozc_engine.cc` *before*
+   `GetKeyEvent()` is called — gated on APL mode + `right_alt` configured.
+   The filter in `key_event_handler.cc` is not changed.
 
-2. **Even if the event were allowed through, `key_code` is wrong**: the
-   `key_code` field in the Mozc `KeyEvent` is set from the X11 keysym
-   (keyval), which is already the composed character (e.g. `0xE6` for `æ`),
-   not the base key (`0x61` for `a`). The APL glyph lookup table uses base
-   ASCII values, so no match is found.
+2. **The keyval is the composed character, not the base key**: on European
+   layouts `keyval` is already `æ`, not `a`. The solution is to use the raw
+   Linux evdev scancode (`keycode` parameter, physical key position,
+   layout-independent — IBus passes evdev scancodes, not X11 keycodes) together
+   with a hardcoded US QWERTY scancode→ASCII table.
+   APL keyboard layouts are defined by physical position (QWERTY-based), so
+   keycode 38 → `'a'` is correct regardless of whether the user's layout
+   labels that key `'a'`, `'q'` (AZERTY), or anything else.
 
-Ctrl and Alt do not have this problem because they do not trigger X11
-level-3 composition — the keyval remains the base character (`a`) and only
-the modifier mask changes.
+**Implementation** (`src/unix/ibus/mozc_engine.cc`):
 
-#### Approach for proper AltGr support in a future implementation
+```cpp
+// In ProcessKeyEvent, before GetKeyEvent:
+if ((modifiers & IBUS_MOD5_MASK) && !(modifiers & IBUS_RELEASE_MASK) &&
+    apl_shifting_key_set_.right_alt() &&
+    property_handler_->GetOriginalCompositionMode() == commands::APL) {
+  std::optional<AplKeyChars> chars = AplKeycodeToChars(keycode);
+  if (chars.has_value()) {
+    const bool is_shifted = (modifiers & IBUS_SHIFT_MASK) != 0;
+    const uint32_t kc = is_shifted ? chars->shifted : chars->unshifted;
+    std::optional<absl::string_view> glyph = session::GetAplShiftedGlyph(kc);
+    if (!glyph.has_value()) glyph = session::GetAplGlyph(kc);
+    if (glyph.has_value()) {
+      engine->CommitText(*glyph);
+      return true;
+    }
+  }
+  return false;
+}
+```
 
-To support AltGr as a first-class shifting key, the following changes are
-required across the IBus frontend and session layers:
+`AplKeycodeToChars()` is a file-scope function in `mozc_engine.cc`'s anonymous
+namespace, mapping X11 keycodes to `{unshifted, shifted}` ASCII char pairs.
+`engine->CommitText()` commits the glyph directly, bypassing
+`GetKeyEvent`/`SendKeyWithContext` (correct since there is no preedit or
+session state to update for a direct-commit glyph in APL mode).
 
-1. **Allow MOD5 events through `key_event_handler.cc`** (conditionally, when
-   AltGr is the configured shifting key). The existing blanket `kExtraModMask`
-   filter needs to become config-aware, or the AltGr check must be applied
-   earlier, before the filter.
+Caps Lock with `level3(caps_switch)` XKB option active also generates
+`IBUS_MOD5_MASK` events and is handled by this same path at no extra cost.
 
-2. **Map MOD5 to `RIGHT_ALT` in `key_translator.cc`**: Add
-   `{IBUS_ISO_Level3_Shift, IBUS_MOD5_MASK}` to `kIbusModifierMaskMap` and
-   emit `commands::KeyEvent::RIGHT_ALT` when MOD5 is set, so
-   `TryAplShiftedKey()` can detect it via the modifier list.
+**Files changed**:
 
-3. **Use the hardware keycode, not the keysym, for APL lookup**: When
-   `RIGHT_ALT` is the shifting modifier, the keysym (`key_code`) is already
-   the level-3 composed character. Instead, use the raw X11 hardware keycode
-   (the `keycode` parameter passed to `ProcessKeyEvent`) to identify the
-   physical key pressed, and derive the base ASCII character from a
-   keycode-to-character table that is independent of the active XKB layout.
-   This table maps X11 keycodes (hardware positions) to the level-1 (unshifted,
-   no-modifier) character for a standard US layout, e.g. keycode 38 → `'a'`.
-   The raw keycode would need to be plumbed through the `KeyEvent` proto (a
-   new field) or passed alongside it to reach `TryAplShiftedKey()`.
-
-4. **Test across keyboard layouts**: Users with European or non-US layouts will
-   have different level-3 bindings. The keycode-to-base-character table must
-   either use the XKB API to query the level-1 keysym dynamically, or accept
-   that only US-layout keycodes are mapped (and document that the AltGr option
-   requires a US-layout base or a custom XKB configuration that leaves
-   AltGr+key unbound).
-
-This is non-trivial and crosses the IBus/session boundary, so it is deferred
-to a post-POC release.
+| File | Change |
+|------|--------|
+| `src/unix/ibus/mozc_engine.cc` | Add `AplKeycodeToChars()` + MOD5 intercept in `ProcessKeyEvent` |
+| `src/unix/ibus/BUILD.bazel` | Add `//session:apl_keymap` dep |
 
 #### Super (Windows key) — not yet supported; investigation needed
 

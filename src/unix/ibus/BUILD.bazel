@@ -216,6 +216,7 @@ mozc_cc_library(
         "//base:vlog",
         "//base/container:flat_map",
         "//client",
+        "//session:apl_keymap",
         "//protocol:candidate_window_cc_proto",
         "//protocol:commands_cc_proto",
         "//protocol:config_cc_proto",
