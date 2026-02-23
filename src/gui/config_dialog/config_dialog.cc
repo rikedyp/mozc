@@ -167,8 +167,7 @@ ConfigDialog::ConfigDialog()
   shiftKeyModeSwitchComboBox->addItem(tr("Alphanumeric"));
   shiftKeyModeSwitchComboBox->addItem(tr("Katakana"));
 
-  aplShiftingKeyComboBox->addItem(tr("Ctrl"));
-  aplShiftingKeyComboBox->addItem(tr("Alt"));
+  // APL shifting key checkboxes — no addItem() needed for QCheckBox widgets.
 
   numpadCharacterFormComboBox->addItem(tr("Follow input mode"));
   numpadCharacterFormComboBox->addItem(tr("Fullwidth"));
@@ -543,7 +542,21 @@ void ConfigDialog::ConvertFromProto(const config::Config &config) {
 
   SET_COMBOBOX(shiftKeyModeSwitchComboBox, ShiftKeyModeSwitch,
                shift_key_mode_switch);
-  SET_COMBOBOX(aplShiftingKeyComboBox, AplShiftingKey, apl_shifting_key);
+  // APL shifting key checkboxes.  Default (no key_set field): both Ctrl keys.
+  {
+    const bool has_set = config.has_apl_shifting_key_set();
+    const auto& ks = config.apl_shifting_key_set();
+    // When migrating from the old single-enum config, the key_set is absent.
+    // Determine the effective default from the deprecated field.
+    const bool default_ctrl =
+        !has_set || config.apl_shifting_key() != config::Config::APL_SHIFT_ALT;
+    const bool default_alt =
+        has_set ? false : config.apl_shifting_key() == config::Config::APL_SHIFT_ALT;
+    aplLeftCtrlCheckBox->setChecked(has_set ? ks.left_ctrl() : default_ctrl);
+    aplRightCtrlCheckBox->setChecked(has_set ? ks.right_ctrl() : default_ctrl);
+    aplLeftAltCheckBox->setChecked(has_set ? ks.left_alt() : default_alt);
+    aplRightAltCheckBox->setChecked(has_set ? ks.right_alt() : default_alt);
+  }
 
   SET_CHECKBOX(useJapaneseLayout, use_japanese_layout);
 
@@ -641,7 +654,15 @@ void ConfigDialog::ConvertToProto(config::Config *config) const {
 
   GET_COMBOBOX(shiftKeyModeSwitchComboBox, ShiftKeyModeSwitch,
                shift_key_mode_switch);
-  GET_COMBOBOX(aplShiftingKeyComboBox, AplShiftingKey, apl_shifting_key);
+  // APL shifting key checkboxes → AplShiftingKeySet (field 122).
+  config->mutable_apl_shifting_key_set()->set_left_ctrl(
+      aplLeftCtrlCheckBox->isChecked());
+  config->mutable_apl_shifting_key_set()->set_right_ctrl(
+      aplRightCtrlCheckBox->isChecked());
+  config->mutable_apl_shifting_key_set()->set_left_alt(
+      aplLeftAltCheckBox->isChecked());
+  config->mutable_apl_shifting_key_set()->set_right_alt(
+      aplRightAltCheckBox->isChecked());
 
   // tab4
   GET_CHECKBOX(historySuggestCheckBox, use_history_suggest);

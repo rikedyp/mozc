@@ -2204,27 +2204,45 @@ bool Session::TryAplShiftedKey(commands::Command* command) {
 
   const commands::KeyEvent& key = command->input().key();
 
-  // Determine which modifier acts as the APL shifting key from config.
+  // Determine whether any configured APL shifting key is held.
   // Use the server-side stored config (not the client-supplied input config,
   // which is typically empty for key events).
-  const config::Config& config = context_->GetConfig();
-  commands::KeyEvent::ModifierKey shifting_modifier;
-  switch (config.apl_shifting_key()) {
-    case config::Config::APL_SHIFT_ALT:
-      shifting_modifier = commands::KeyEvent::ALT;
-      break;
-    case config::Config::APL_SHIFT_CTRL:
-    default:
-      shifting_modifier = commands::KeyEvent::CTRL;
-      break;
-  }
+  const config::Config& cfg = context_->GetConfig();
 
-  // Check whether the APL shifting key is held.
+  // Check modifier_keys against the per-key AplShiftingKeySet (field 122).
+  // Falls back to the deprecated AplShiftingKey enum (field 121) when the
+  // set is not configured, then to the default of both Ctrl keys.
   bool has_shifting_key = false;
-  for (int i = 0; i < key.modifier_keys_size(); ++i) {
-    if (key.modifier_keys(i) == shifting_modifier) {
-      has_shifting_key = true;
-      break;
+  for (int i = 0; i < key.modifier_keys_size() && !has_shifting_key; ++i) {
+    const auto mod = key.modifier_keys(i);
+    if (cfg.has_apl_shifting_key_set()) {
+      const auto& ks = cfg.apl_shifting_key_set();
+      // Accept left/right-specific flags when the corresponding side is
+      // enabled.  Also accept the combined flag (CTRL/ALT) as a fallback
+      // when both sides are enabled — this handles the edge case where
+      // key_event_handler lost per-side state due to a focus change.
+      if (ks.left_ctrl()  && mod == commands::KeyEvent::LEFT_CTRL)  has_shifting_key = true;
+      if (ks.right_ctrl() && mod == commands::KeyEvent::RIGHT_CTRL) has_shifting_key = true;
+      if (ks.left_ctrl() && ks.right_ctrl() &&
+          mod == commands::KeyEvent::CTRL)                           has_shifting_key = true;
+      if (ks.left_alt()   && mod == commands::KeyEvent::LEFT_ALT)   has_shifting_key = true;
+      if (ks.right_alt()  && mod == commands::KeyEvent::RIGHT_ALT)  has_shifting_key = true;
+      if (ks.left_alt() && ks.right_alt() &&
+          mod == commands::KeyEvent::ALT)                            has_shifting_key = true;
+    } else {
+      // Fallback: deprecated single-key enum, or default (both Ctrl keys).
+      switch (cfg.apl_shifting_key()) {
+        case config::Config::APL_SHIFT_ALT:
+          if (mod == commands::KeyEvent::ALT ||
+              mod == commands::KeyEvent::LEFT_ALT ||
+              mod == commands::KeyEvent::RIGHT_ALT) has_shifting_key = true;
+          break;
+        default:  // APL_SHIFT_CTRL or unset — default to both Ctrl keys
+          if (mod == commands::KeyEvent::CTRL ||
+              mod == commands::KeyEvent::LEFT_CTRL ||
+              mod == commands::KeyEvent::RIGHT_CTRL) has_shifting_key = true;
+          break;
+      }
     }
   }
 

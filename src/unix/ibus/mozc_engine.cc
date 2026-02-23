@@ -400,7 +400,9 @@ bool MozcEngine::ProcessKeyEvent(IbusEngineWrapper *engine, uint keyval,
   // "Alt tap", and focuses the application menu bar.
   // Both press and release must be suppressed: suppressing only the release
   // would leave the toolkit's Alt-pressed state permanently set.
-  if (apl_shifting_key_ == config::Config::APL_SHIFT_ALT &&
+  // When Alt is the configured APL shifting key, suppress bare Alt events to
+  // prevent toolkits from interpreting an "Alt tap" as menu-bar focus.
+  if ((apl_shifting_key_set_.left_alt() || apl_shifting_key_set_.right_alt()) &&
       property_handler_->GetOriginalCompositionMode() == commands::APL) {
     if (keyval == IBUS_KEY_Alt_L || keyval == IBUS_KEY_Alt_R ||
         keyval == IBUS_KEY_Meta_L || keyval == IBUS_KEY_Meta_R) {
@@ -558,7 +560,19 @@ void MozcEngine::UpdatePreeditMethod() {
   }
   preedit_method_ = config.has_preedit_method() ? config.preedit_method()
                                                 : config::Config::ROMAN;
-  apl_shifting_key_ = config.apl_shifting_key();
+  if (config.has_apl_shifting_key_set()) {
+    apl_shifting_key_set_ = config.apl_shifting_key_set();
+  } else {
+    // Fallback: derive from deprecated enum or apply default (both Ctrl keys).
+    apl_shifting_key_set_.Clear();
+    if (config.apl_shifting_key() == config::Config::APL_SHIFT_ALT) {
+      apl_shifting_key_set_.set_left_alt(true);
+      apl_shifting_key_set_.set_right_alt(true);
+    } else {
+      apl_shifting_key_set_.set_left_ctrl(true);
+      apl_shifting_key_set_.set_right_ctrl(true);
+    }
+  }
 }
 
 void MozcEngine::SyncData(bool force) {

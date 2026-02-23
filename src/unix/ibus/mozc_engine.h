@@ -145,8 +145,9 @@ class MozcEngine : public EngineInterface {
   CandidateWindowHandler mozc_candidate_window_handler_;
   IBusCandidateWindowHandler ibus_candidate_window_handler_;
   config::Config::PreeditMethod preedit_method_;
-  config::Config::AplShiftingKey apl_shifting_key_ =
-      config::Config::APL_SHIFT_CTRL;
+  // Cached APL shifting key set for use in ProcessKeyEvent.
+  // When not set in config, the effective default is both Ctrl keys.
+  config::Config::AplShiftingKeySet apl_shifting_key_set_;
 
   // Unique IDs of candidates that are currently shown.
   std::vector<int32_t> unique_candidate_ids_;

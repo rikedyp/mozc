@@ -362,11 +362,24 @@ message Config {
 
   // APL shifting key: the modifier held to produce APL glyphs.
   // AltGr (Right Alt) is not supported in the POC — see design doc Step 2.4.
+  // Deprecated: use apl_shifting_key_set (field 122) instead.
   enum AplShiftingKey {
     APL_SHIFT_CTRL = 0;       // Ctrl (default; standard APL convention)
     APL_SHIFT_ALT = 1;        // Alt / Meta
   }
   optional AplShiftingKey apl_shifting_key = 121 [default = APL_SHIFT_CTRL];
+
+  // Per-key APL shifting key configuration (Step 2.10).
+  // When not set, the default is both Ctrl keys (left and right).
+  // AltGr (right_alt) and Super keys require additional configuration —
+  // see design doc Steps 2.10–2.11.
+  message AplShiftingKeySet {
+    optional bool left_ctrl  = 1 [default = false];
+    optional bool right_ctrl = 2 [default = false];
+    optional bool left_alt   = 3 [default = false];
+    optional bool right_alt  = 4 [default = false];
+  }
+  optional AplShiftingKeySet apl_shifting_key_set = 122;
 
   //////////////////////////////////////////////////////////////
   //

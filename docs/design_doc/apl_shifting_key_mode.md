@@ -1068,33 +1068,41 @@ APL Shifting Keys
 
 | Key | `ModifierKey` flag | Current status | Estimated effort |
 |-----|--------------------|----------------|------------------|
-| Left Ctrl | `LEFT_CTRL (32)` | Working (both Ctrl keys together) | Trivial — check `LEFT_CTRL` specifically |
-| Right Ctrl | `RIGHT_CTRL (256)` | Working (both Ctrl keys together) | Trivial — check `RIGHT_CTRL` specifically |
-| Left Alt | `LEFT_ALT (64)` | Working (both Alt keys together) | Trivial — check `LEFT_ALT` specifically |
+| Left Ctrl | `LEFT_CTRL (32)` | **Implemented** — see per-key notes | Done |
+| Right Ctrl | `RIGHT_CTRL (256)` | **Implemented** — see per-key notes | Done |
+| Left Alt | `LEFT_ALT (64)` | **Implemented** — see per-key notes | Done |
 | Right Alt (AltGr) | `RIGHT_ALT (512)` | Blocked — see Step 2.4 | High — MOD5 filter + keycode approach; or XKB workaround (see below) |
 | Left Windows | Not in enum (MOD4) | Blocked — see Step 2.4 | Medium — add `SUPER_L` to enum + empirical investigation |
 | Right Windows | Not in enum (MOD4) | Blocked — see Step 2.4 | Medium — same as Left Windows |
-| Left Shift | `LEFT_SHIFT (128)` | Not yet implemented | Low (with caveats — see note) |
-| Right Shift | `RIGHT_SHIFT (1024)` | Not yet implemented | Low (with caveats — see note) |
+| Left Shift | `LEFT_SHIFT (128)` | Emitted by key_event_handler; not in AplShiftingKeySet yet | Low (with caveats — see note) |
+| Right Shift | `RIGHT_SHIFT (1024)` | Emitted by key_event_handler; not in AplShiftingKeySet yet | Low (with caveats — see note) |
 | Caps Lock | `CAPS (2048)` | Not yet implemented | Low — CAPS flag already available in the protocol |
 | Menu Key | No modifier flag | Not yet implemented | Medium — latch mechanism differs from hold-down keys |
 
 #### Per-key notes
 
-**Left Ctrl / Right Ctrl (independent selection)**
+**Left Ctrl / Right Ctrl (independent selection) — Verified ✓**
 
-Currently `TryAplShiftedKey()` checks for `commands::KeyEvent::CTRL`, which is set
-for either Ctrl key. To support independent left/right selection, check `LEFT_CTRL`
-and `RIGHT_CTRL` separately. **Investigation needed**: audit `key_translator.cc` to
-determine whether pressing Left Ctrl emits only `LEFT_CTRL`, or both `LEFT_CTRL` and
-the combined `CTRL` flag simultaneously. If the combined flag is always set alongside
-the specific flag, enabling Left-only requires checking that `LEFT_CTRL` is present
-*and* `RIGHT_CTRL` is absent.
+**Investigation result**: `key_translator.cc` only emits the combined `CTRL` flag
+(from `IBUS_CONTROL_MASK`) — it does NOT emit `LEFT_CTRL` or `RIGHT_CTRL`. However,
+`key_event_handler.cc` already maintains `currently_pressed_modifiers_` as a set of
+IBus keyvals (e.g., `IBUS_Control_L`, `IBUS_Control_R`). This state is the correct
+source for L/R distinction.
 
-**Left Alt / Right Alt (independent selection)**
+**Solution**: augment `ProcessModifiers()` in `key_event_handler.cc` to iterate
+`currently_pressed_modifiers_` when a non-modifier key is pressed and emit
+`LEFT_CTRL`/`RIGHT_CTRL`/`LEFT_ALT`/`RIGHT_ALT`/`LEFT_SHIFT`/`RIGHT_SHIFT`
+alongside the combined flags already set by `key_translator`. `TryAplShiftedKey()`
+then checks the specific flags when the new `AplShiftingKeySet` config is used.
 
-Same flag-combination question as Ctrl — audit `key_translator.cc`. Left Alt has no
-XKB complications. Right Alt (AltGr) is the complex case documented in Step 2.4.
+When both sides are configured (the default), the combined `CTRL` flag is also
+accepted as a fallback in case L/R state was lost due to a focus change.
+
+**Left Alt / Right Alt (independent selection) — Verified ✓**
+
+Same mechanism as Ctrl: `key_event_handler.cc` emits `LEFT_ALT`/`RIGHT_ALT` based
+on `currently_pressed_modifiers_`. Left Alt has no XKB complications. Right Alt
+(AltGr) remains blocked by the MOD5 filter — see Step 2.4 for the full analysis.
 
 **Left Shift / Right Shift**
 
@@ -1591,6 +1599,6 @@ Summary of Phases
 | Phase | Scope | Platform | Status | Key Deliverable |
 |-------|-------|----------|--------|-----------------|
 | 1 | Minimal POC | Linux | **Done** (2026-02-15) | Ctrl+key → APL glyph via IBus/Wayland/KDE |
-| 2 | Polish | Linux | In progress (2.0–2.5 done, 2.4a–b done, 2.9 done) | Verify glyph table (2.6); full shifting key checklist + transparent XKB config (2.10–2.11) |
+| 2 | Polish | Linux | In progress (2.0–2.5 done, 2.4a–b done, 2.9 done; 2.10 Ctrl/Alt in progress) | Verify glyph table (2.6); full shifting key checklist + transparent XKB config (2.10–2.11) |
 | 3 | Cross-platform | Win/Mac/Ride | Pending | TSF + IMK integration, Ride verification |
 | 4 | Advanced | All | Pending | Keyword search, idioms, composition, overlay |

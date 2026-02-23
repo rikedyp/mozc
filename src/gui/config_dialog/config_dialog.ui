@@ -756,17 +756,35 @@
        <item row="3" column="0" colspan="3">
         <widget class="QLabel" name="aplShiftingKeyLabel">
          <property name="text">
-          <string>APL shifting key</string>
+          <string>APL shifting keys</string>
          </property>
         </widget>
        </item>
-       <item row="3" column="3" colspan="4">
-        <widget class="QComboBox" name="aplShiftingKeyComboBox">
-         <property name="minimumSize">
-          <size>
-           <width>150</width>
-           <height>0</height>
-          </size>
+       <item row="3" column="3">
+        <widget class="QCheckBox" name="aplLeftCtrlCheckBox">
+         <property name="text">
+          <string>Left Ctrl</string>
+         </property>
+        </widget>
+       </item>
+       <item row="3" column="4">
+        <widget class="QCheckBox" name="aplRightCtrlCheckBox">
+         <property name="text">
+          <string>Right Ctrl</string>
+         </property>
+        </widget>
+       </item>
+       <item row="3" column="5">
+        <widget class="QCheckBox" name="aplLeftAltCheckBox">
+         <property name="text">
+          <string>Left Alt</string>
+         </property>
+        </widget>
+       </item>
+       <item row="3" column="6">
+        <widget class="QCheckBox" name="aplRightAltCheckBox">
+         <property name="text">
+          <string>Right Alt</string>
          </property>
         </widget>
        </item>
@@ -1844,7 +1862,10 @@
   <tabstop>questionMarkCheckBox</tabstop>
   <tabstop>exclamationMarkCheckBox</tabstop>
   <tabstop>shiftKeyModeSwitchComboBox</tabstop>
-  <tabstop>aplShiftingKeyComboBox</tabstop>
+  <tabstop>aplLeftCtrlCheckBox</tabstop>
+  <tabstop>aplRightCtrlCheckBox</tabstop>
+  <tabstop>aplLeftAltCheckBox</tabstop>
+  <tabstop>aplRightAltCheckBox</tabstop>
   <tabstop>useJapaneseLayout</tabstop>
   <tabstop>characterFormEditor</tabstop>
   <tabstop>historySuggestCheckBox</tabstop>

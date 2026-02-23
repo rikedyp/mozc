@@ -154,6 +154,22 @@ bool KeyEventHandler::ProcessModifiers(bool is_key_up, uint keyval,
 
   if (!currently_pressed_modifiers_.empty() && !is_modifier_only) {
     is_non_modifier_key_pressed_ = true;
+    // Augment modifier_keys with left/right-specific flags derived from the
+    // set of currently held modifier keys.  key_translator emits only the
+    // combined CTRL/ALT/SHIFT flags (from the mask); we use the keyval-level
+    // state here to resolve which physical key is held, enabling independent
+    // left/right shifting key configuration (see design doc Step 2.10).
+    for (uint mod_keyval : currently_pressed_modifiers_) {
+      commands::KeyEvent::ModifierKey specific;
+      if      (mod_keyval == IBUS_Control_L) specific = commands::KeyEvent::LEFT_CTRL;
+      else if (mod_keyval == IBUS_Control_R) specific = commands::KeyEvent::RIGHT_CTRL;
+      else if (mod_keyval == IBUS_Alt_L)     specific = commands::KeyEvent::LEFT_ALT;
+      else if (mod_keyval == IBUS_Alt_R)     specific = commands::KeyEvent::RIGHT_ALT;
+      else if (mod_keyval == IBUS_Shift_L)   specific = commands::KeyEvent::LEFT_SHIFT;
+      else if (mod_keyval == IBUS_Shift_R)   specific = commands::KeyEvent::RIGHT_SHIFT;
+      else continue;
+      key_event->add_modifier_keys(specific);
+    }
   }
   if (is_non_modifier_key_pressed_) {
     modifiers_to_be_sent_.clear();
