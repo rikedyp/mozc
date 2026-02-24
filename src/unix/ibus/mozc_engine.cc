@@ -395,6 +395,7 @@ void MozcEngine::FocusIn(IbusEngineWrapper *engine) {
 void MozcEngine::FocusOut(IbusEngineWrapper *engine) {
   { FILE* f = fopen("/tmp/mozc_lifecycle.txt", "a");
     if (f) { fprintf(f, "FocusOut\n"); fclose(f); } }
+  caps_lock_held_ = false;  // reset hold state in case key-up was missed during focus change
   GetCandidateWindowHandler(engine)->Hide(engine);
   property_handler_->ResetContentType(engine);
 
@@ -441,6 +442,48 @@ bool MozcEngine::ProcessKeyEvent(IbusEngineWrapper *engine, uint keyval,
     if (keyval == IBUS_KEY_Alt_L || keyval == IBUS_KEY_Alt_R ||
         keyval == IBUS_KEY_Meta_L || keyval == IBUS_KEY_Meta_R) {
       return true;  // consume bare Alt: prevent menu-bar focus activation
+    }
+  }
+
+  // Caps Lock hold-down APL shifting key intercept.
+  // Caps Lock is a hardware latch key: pressing it toggles the OS Caps Lock
+  // state (and LED) in the compositor before IBus receives the event.
+  // We track physical hold state via caps_lock_held_ so we can commit APL
+  // glyphs only while the key is down, matching the hold-down semantics of
+  // Ctrl and Alt.  Both key-down and key-up are consumed here so the key event
+  // does not reach the application.
+  //
+  // Keyval normalization: because the OS Caps Lock is toggled ON by the
+  // key-down, subsequent key events for letters arrive with uppercase keyvals
+  // (e.g. 'a' → 'A').  We normalize back:
+  //   uppercase letter keyval → lowercase  (unshifted APL glyph)
+  //   lowercase letter keyval (Shift+key with Caps ON) → uppercase (shifted layer)
+  // Non-letter keyvals are unaffected by Caps Lock, so no normalization is needed.
+  //
+  // Known limitation: after the Caps Lock key-up, the OS Caps Lock LED remains
+  // ON (the compositor already processed the toggle and we cannot undo it via
+  // IBus).  The user must press Caps Lock once more to extinguish the LED.
+  if (apl_shifting_key_set_.caps_lock() &&
+      property_handler_->GetOriginalCompositionMode() == commands::APL) {
+    if (keyval == IBUS_Caps_Lock) {
+      if (modifiers & IBUS_RELEASE_MASK) {
+        caps_lock_held_ = false;
+      } else {
+        caps_lock_held_ = true;
+      }
+      return true;  // consume: prevent key from reaching the application
+    }
+    if (caps_lock_held_ && !(modifiers & IBUS_RELEASE_MASK)) {
+      uint32_t kc = keyval;
+      if (kc >= 'A' && kc <= 'Z') kc = kc - 'A' + 'a';  // Caps-uppercased → lowercase for unshifted
+      else if (kc >= 'a' && kc <= 'z') kc = kc - 'a' + 'A';  // Shift+key with Caps → uppercase for shifted
+      std::optional<absl::string_view> glyph = session::GetAplShiftedGlyph(kc);
+      if (!glyph.has_value()) glyph = session::GetAplGlyph(kc);
+      if (glyph.has_value()) {
+        engine->CommitText(*glyph);
+        return true;
+      }
+      // No APL glyph for this key: fall through to normal processing.
     }
   }
 

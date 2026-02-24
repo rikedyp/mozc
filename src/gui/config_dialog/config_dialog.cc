@@ -556,6 +556,7 @@ void ConfigDialog::ConvertFromProto(const config::Config &config) {
     aplRightCtrlCheckBox->setChecked(has_set ? ks.right_ctrl() : default_ctrl);
     aplLeftAltCheckBox->setChecked(has_set ? ks.left_alt() : default_alt);
     aplRightAltCheckBox->setChecked(has_set ? ks.right_alt() : default_alt);
+    aplCapsLockCheckBox->setChecked(has_set ? ks.caps_lock() : false);
   }
 
   SET_CHECKBOX(useJapaneseLayout, use_japanese_layout);
@@ -663,6 +664,8 @@ void ConfigDialog::ConvertToProto(config::Config *config) const {
       aplLeftAltCheckBox->isChecked());
   config->mutable_apl_shifting_key_set()->set_right_alt(
       aplRightAltCheckBox->isChecked());
+  config->mutable_apl_shifting_key_set()->set_caps_lock(
+      aplCapsLockCheckBox->isChecked());
 
   // tab4
   GET_CHECKBOX(historySuggestCheckBox, use_history_suggest);

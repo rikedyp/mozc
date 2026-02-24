@@ -148,6 +148,9 @@ class MozcEngine : public EngineInterface {
   // Cached APL shifting key set for use in ProcessKeyEvent.
   // When not set in config, the effective default is both Ctrl keys.
   config::Config::AplShiftingKeySet apl_shifting_key_set_;
+  // True while the Caps Lock key is physically held (hold-down shifting mode).
+  // Reset on FocusOut to avoid sticking if key-up is missed during focus change.
+  bool caps_lock_held_ = false;
 
   // Unique IDs of candidates that are currently shown.
   std::vector<int32_t> unique_candidate_ids_;

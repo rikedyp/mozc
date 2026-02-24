@@ -378,6 +378,7 @@ message Config {
     optional bool right_ctrl = 2 [default = false];
     optional bool left_alt   = 3 [default = false];
     optional bool right_alt  = 4 [default = false];
+    optional bool caps_lock  = 5 [default = false];  // latch: APL shift when Caps Lock LED is on
   }
   optional AplShiftingKeySet apl_shifting_key_set = 122;
 

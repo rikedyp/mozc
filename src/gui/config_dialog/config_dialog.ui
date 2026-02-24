@@ -788,6 +788,16 @@
          </property>
         </widget>
        </item>
+       <item row="3" column="7">
+        <widget class="QCheckBox" name="aplCapsLockCheckBox">
+         <property name="text">
+          <string>Caps Lock (latch)</string>
+         </property>
+         <property name="toolTip">
+          <string>When Caps Lock is on, key presses produce APL glyphs instead of letters. Press Caps Lock again to return to normal input.</string>
+         </property>
+        </widget>
+       </item>
        <item row="1" column="4">
         <widget class="QCheckBox" name="toutenCheckBox">
          <property name="maximumSize">
@@ -1866,6 +1876,7 @@
   <tabstop>aplRightCtrlCheckBox</tabstop>
   <tabstop>aplLeftAltCheckBox</tabstop>
   <tabstop>aplRightAltCheckBox</tabstop>
+  <tabstop>aplCapsLockCheckBox</tabstop>
   <tabstop>useJapaneseLayout</tabstop>
   <tabstop>characterFormEditor</tabstop>
   <tabstop>historySuggestCheckBox</tabstop>
