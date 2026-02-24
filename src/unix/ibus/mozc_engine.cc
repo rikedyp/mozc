@@ -396,6 +396,8 @@ void MozcEngine::FocusOut(IbusEngineWrapper *engine) {
   { FILE* f = fopen("/tmp/mozc_lifecycle.txt", "a");
     if (f) { fprintf(f, "FocusOut\n"); fclose(f); } }
   caps_lock_held_ = false;  // reset hold state in case key-up was missed during focus change
+  left_alt_held_  = false;
+  right_alt_held_ = false;
   left_super_held_  = false;
   right_super_held_ = false;
   GetCandidateWindowHandler(engine)->Hide(engine);
@@ -443,6 +445,13 @@ bool MozcEngine::ProcessKeyEvent(IbusEngineWrapper *engine, uint keyval,
       property_handler_->GetOriginalCompositionMode() == commands::APL) {
     if (keyval == IBUS_KEY_Alt_L || keyval == IBUS_KEY_Alt_R ||
         keyval == IBUS_KEY_Meta_L || keyval == IBUS_KEY_Meta_R) {
+      // Track hold state for L/R distinction.  key_event_handler cannot record
+      // these in currently_pressed_modifiers_ because we consume the event
+      // here before GetKeyEvent() runs.  We inject LEFT_ALT / RIGHT_ALT into
+      // the KeyEvent after GetKeyEvent() returns (see below).
+      bool& held = (keyval == IBUS_KEY_Alt_L || keyval == IBUS_KEY_Meta_L)
+                       ? left_alt_held_ : right_alt_held_;
+      held = !(modifiers & IBUS_RELEASE_MASK);
       return true;  // consume bare Alt: prevent menu-bar focus activation
     }
   }
@@ -562,6 +571,21 @@ bool MozcEngine::ProcessKeyEvent(IbusEngineWrapper *engine, uint keyval,
                                        preedit_method_, layout_is_jp, &key)) {
     // Doesn't send a key event to mozc_server.
     return false;
+  }
+
+  // When Alt is the APL shifting key, the bare Alt key events are consumed
+  // before GetKeyEvent() runs (menu-bar suppression above), so
+  // key_event_handler::currently_pressed_modifiers_ never records IBUS_Alt_L /
+  // IBUS_Alt_R.  ProcessModifiers therefore cannot add LEFT_ALT / RIGHT_ALT to
+  // the KeyEvent — only the combined ALT flag (from IBUS_MOD1_MASK) is present.
+  // Inject the specific side flags here, using the hold state tracked above, so
+  // TryAplShiftedKey() can honour independent left/right configuration.
+  if ((modifiers & IBUS_MOD1_MASK) &&
+      property_handler_->GetOriginalCompositionMode() == commands::APL) {
+    if (apl_shifting_key_set_.left_alt() && left_alt_held_)
+      key.add_modifier_keys(commands::KeyEvent::LEFT_ALT);
+    if (apl_shifting_key_set_.right_alt() && right_alt_held_)
+      key.add_modifier_keys(commands::KeyEvent::RIGHT_ALT);
   }
 
   MOZC_VLOG(2) << key;

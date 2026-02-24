@@ -512,6 +512,11 @@ void PropertyHandler::ProcessPropertyActivate(IbusEngineWrapper *engine,
       if (!client_->SetConfig(config)) {
         LOG(ERROR) << "SetConfig failed for APL shifting key toggle";
       }
+      // Keep the property GObject in sync so RegisterProperties (called on
+      // every FocusIn) shows the correct state, and immediately update the
+      // panel display.
+      prop.SetState(new_value ? PROP_STATE_CHECKED : PROP_STATE_UNCHECKED);
+      engine->UpdateProperty(&prop);
       return;
     }
   }

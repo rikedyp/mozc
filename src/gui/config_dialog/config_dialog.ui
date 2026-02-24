@@ -1827,11 +1827,6 @@
   <tabstop>questionMarkCheckBox</tabstop>
   <tabstop>exclamationMarkCheckBox</tabstop>
   <tabstop>shiftKeyModeSwitchComboBox</tabstop>
-  <tabstop>aplLeftCtrlCheckBox</tabstop>
-  <tabstop>aplRightCtrlCheckBox</tabstop>
-  <tabstop>aplLeftAltCheckBox</tabstop>
-  <tabstop>aplRightAltCheckBox</tabstop>
-  <tabstop>aplCapsLockCheckBox</tabstop>
   <tabstop>useJapaneseLayout</tabstop>
   <tabstop>characterFormEditor</tabstop>
   <tabstop>historySuggestCheckBox</tabstop>

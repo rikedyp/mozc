@@ -1112,6 +1112,14 @@ Same mechanism as Ctrl: `key_event_handler.cc` emits `LEFT_ALT`/`RIGHT_ALT` base
 on `currently_pressed_modifiers_`. Left Alt has no XKB complications. Right Alt
 (AltGr) remains blocked by the MOD5 filter — see Step 2.4 for the full analysis.
 
+**Bug fixed**: `LEFT_ALT`/`RIGHT_ALT` were never actually reaching `TryAplShiftedKey()`
+for left Alt. Root cause: the bare Alt key-down is consumed early in `ProcessKeyEvent`
+(menu-bar suppression, commit `132b82d47`) before `GetKeyEvent()` runs, so
+`currently_pressed_modifiers_` never records `IBUS_Alt_L`. Fix: track
+`left_alt_held_`/`right_alt_held_` in `MozcEngine` and inject `LEFT_ALT`/`RIGHT_ALT`
+into the `KeyEvent` after `GetKeyEvent()` returns, guarded by `IBUS_MOD1_MASK` and APL
+mode. Same pattern as the existing `left_super_held_`/`right_super_held_` injection.
+
 **Left Shift / Right Shift**
 
 Using Shift as the APL shifting key means Shift+A → ⍺ rather than 'A'. This matches
@@ -1197,6 +1205,22 @@ multiple shifting-key options via XKB options (so users choose at the `setxkbmap
 or GNOME/KDE level), or whether separate files per shifting key are required. Confirm
 that `~/.config/xkb/` is honoured by the X server and compositor versions in the
 target distributions.
+
+#### IBus panel submenu — menu state sync bug (fixed)
+
+The shifting-key checklist was moved from the Qt config dialog to an IBus panel
+submenu (commit `842aee86c`). Each entry is a `PROP_TYPE_TOGGLE` property.
+
+**Bug**: `ProcessPropertyActivate` updated `Config` via `SetConfig` but never called
+`prop.SetState()` + `engine->UpdateProperty()` on the toggled item. Consequence:
+the IBus property GObject retained its original constructed state indefinitely.
+On every `FocusIn`, `RegisterProperties` re-sent those stale states to the panel,
+resetting the visual checkmarks to whatever the config was at engine startup —
+regardless of what the user had ticked since.
+
+**Fix**: after `SetConfig`, call `prop.SetState(new_value ? PROP_STATE_CHECKED :
+PROP_STATE_UNCHECKED)` and `engine->UpdateProperty(&prop)`. This mirrors the
+pattern used in `UpdateCompositionModeIcon()` for the mode radio buttons.
 
 #### Files changed
 
