@@ -236,20 +236,22 @@ namespace mozc {
 namespace session {
 
 std::optional<absl::string_view> GetAplGlyph(uint32_t key_code) {
-  // Dyalog-style APL keyboard layout (Ctrl+key)
+  // Dyalog-style APL keyboard layout (Ctrl+key) — US ANSI positions.
+  // See src/session/apl_keymap.cc for the full authoritative table.
   static const auto* kMap = new absl::flat_hash_map<uint32_t, absl::string_view>({
-    {'a', "⍺"},  {'w', "⍵"},  {'e', "∊"},  {'r', "⍴"},
-    {'t', "∼"},  {'y', "↑"},  {'u', "↓"},  {'i', "⍳"},
-    {'o', "○"},  {'p', "⋆"},  {'d', "⌊"},  {'f', "⌈"},    // ... etc — full layout to be defined
-    {'s', "⌈"},  {'l', "⎕"},  {'n', "⊤"},  {'m', "∣"},
-    {'z', "⊂"},  {'x', "⊃"},  {'c', "∩"},  {'v', "∪"},
-    {'b', "⊥"},  {'j', "∘"},  {'k', "'"},  {'g', "∇"},
-    {'h', "∆"},  {'q', "?"},
-    {'[', "←"},  {']', "→"},  {'\\', "⍀"}, {'/','⌿'},
-    {'=', "÷"},  {'-', "×"},  {'.', "⍀"},  {',', "⍪"},
+    {'`', "⋄"},  // diamond
     {'1', "¨"},  {'2', "¯"},  {'3', "<"},  {'4', "≤"},
     {'5', "="},  {'6', "≥"},  {'7', ">"},  {'8', "≠"},
-    {'9', "∨"},  {'0', "∧"},
+    {'9', "∨"},  {'0', "∧"},  {'-', "×"},  {'=', "÷"},
+    {'q', "?"},  {'w', "⍵"},  {'e', "∊"},  {'r', "⍴"},
+    {'t', "∼"},  {'y', "↑"},  {'u', "↓"},  {'i', "⍳"},
+    {'o', "○"},  {'p', "⋆"},  {'[', "←"},  {']', "→"},  {'\\', "⊢"},
+    {'a', "⍺"},  {'s', "⌈"},  {'d', "⌊"},  {'f', "_"},
+    {'g', "∇"},  {'h', "∆"},  {'j', "∘"},  {'k', "'"},
+    {'l', "⎕"},  {';', "⍎"},  {'\'', "⍕"},
+    {'z', "⊂"},  {'x', "⊃"},  {'v', "∪"},  {'b', "⊥"},
+    {'n', "⊤"},  {'m', "∣"},  {',', "⍝"},  {'.', "⍀"},  {'/', "⌿"},
+    // 'c' is unassigned
   });
   auto it = kMap->find(key_code);
   if (it != kMap->end()) return it->second;
@@ -1634,3 +1636,121 @@ Summary of Phases
 | 2 | Polish | Linux | In progress (2.0–2.5 done, 2.4a–b done, 2.9 done; 2.10 Ctrl/Alt in progress) | Verify glyph table (2.6); full shifting key checklist + transparent XKB config (2.10–2.11) |
 | 3 | Cross-platform | Win/Mac/Ride | Pending | TSF + IMK integration, Ride verification |
 | 4 | Advanced | All | Pending | Keyword search, idioms, composition, overlay |
+
+---
+
+Design Notes: A Clean Scancode-First Architecture
+==================================================
+
+The implementation above grew incrementally: Ctrl and Alt were first handled in
+`session.cc` using IBus keyvals, then AltGr and Super were added as evdev
+intercepts in `mozc_engine.cc`, then a Ctrl evdev intercept was bolted on top
+to fix UK/US layout conflicts. The result is two parallel code paths doing the
+same job with different mechanisms.
+
+This section describes what a clean design would look like if starting from
+scratch — as a reference for any future refactoring.
+
+The fundamental problem with keyvals
+--------------------------------------
+
+IBus delivers key events with two pieces of information:
+
+- **`keyval`**: the Unicode codepoint (or keysym) the key produces on the
+  *current layout*. UK Shift+2 gives `'"'`, US Shift+2 gives `'@'`. The same
+  physical key produces different keyvals on different layouts.
+- **`keycode`**: the Linux evdev scancode. Evdev 3 is always the key that says
+  "2" on a US keyboard, regardless of what layout is active.
+
+APL keyboard layouts are defined by *physical position* (a QWERTY-based
+overlay), not by what character the key normally produces. Using keyvals for
+APL glyph lookup therefore requires separate handling per keyboard layout —
+which is exactly the UK/US bug that surfaced during testing.
+
+The clean approach
+------------------
+
+All APL glyph output should be handled in `mozc_engine.cc` using evdev
+scancodes, before `GetKeyEvent()` is called. `session.cc` should handle only
+mode state (APL mode on/off, unshifted passthrough) and know nothing about
+glyph lookup.
+
+### Architecture
+
+```
+ProcessKeyEvent(keyval, keycode, modifiers)
+  │
+  ├── [Ctrl/Alt/Super bare key] → track held state; consume to suppress system effects
+  │
+  ├── [APL mode active AND shifting modifier held AND keycode in AplKeycodeToChars]
+  │     chars = AplKeycodeToChars(keycode)        ← physical position, layout-independent
+  │     is_shifted = (modifiers & IBUS_SHIFT_MASK)
+  │     kc = is_shifted ? chars.shifted : chars.unshifted   ← US QWERTY normal or shifted char
+  │     glyph = GetAplShiftedGlyph(kc) || GetAplGlyph(kc)  ← single lookup call
+  │     if glyph: CommitText(glyph); return true
+  │     else: return false   ← no APL mapping; pass to application, skip mozc server
+  │
+  ├── [APL mode active AND no shifting modifier AND keycode is printable]
+  │     chars = AplKeycodeToChars(keycode)
+  │     CommitText(is_shifted ? chars.shifted : chars.unshifted)   ← unshifted passthrough
+  │     return true
+  │
+  └── [everything else] → GetKeyEvent() → session.cc → normal Mozc path
+```
+
+One intercept block in `mozc_engine.cc` serves *all* shifting keys uniformly.
+The only per-modifier distinction needed is which physical modifier is held —
+tracked using keyval for the bare key-down event (IBUS_Control_L vs
+IBUS_Control_R, IBUS_Super_L vs IBUS_Super_R, etc.) and read from
+`modifiers & IBUS_{MOD}_MASK` for combined Modifier+key events.
+
+### `AplKeycodeToChars` as the single normalisation point
+
+`AplKeycodeToChars` maps evdev scancode → `{unshifted_char, shifted_char}` in
+US QWERTY. This is the *only* place that knows about physical key positions. All
+of `apl_keymap.cc` — `GetAplGlyph` and `GetAplShiftedGlyph` — is then a pure
+function from normalised US-QWERTY characters to APL glyphs. It knows nothing
+about keyboards, scancodes, or layouts.
+
+```
+evdev scancode  →  AplKeycodeToChars  →  {unshifted, shifted} ASCII
+                                              ↓
+                                    GetAplGlyph / GetAplShiftedGlyph
+                                              ↓
+                                         APL glyph string
+```
+
+### What changes from the current implementation
+
+| Current | Clean |
+|---------|-------|
+| Glyph lookup in `session.cc::TryAplShiftedKey()` using keyval | Glyph lookup in `mozc_engine.cc` using evdev scancode |
+| Separate evdev intercepts for AltGr, Super; keyval path for Ctrl, Alt | Single intercept structure for all shifting keys |
+| Unshifted passthrough in `session.cc::TryAplShiftedKey()` | Unshifted passthrough in `mozc_engine.cc` |
+| `TryAplShiftedKey()` tries shifted map first (can't tell from keyval whether Shift was held) | `is_shifted = modifiers & IBUS_SHIFT_MASK` — explicit; no ambiguity |
+| UK/US layout conflicts due to keyval encoding of Shift | No layout-dependent code; scancodes are layout-neutral |
+| `session.cc` contains APL glyph logic; `mozc_engine.cc` also contains some | All APL glyph output in one place |
+
+### What `session.cc` retains
+
+In a clean design, `session.cc` retains only:
+
+1. `apl_mode_active_` flag and the `CompositionModeAPL()` / `MakeSureIMEOn()`
+   mode persistence logic.
+2. `OutputMode()` override to report `commands::APL` to the property handler.
+3. No glyph lookup. `TryAplShiftedKey()` is removed entirely.
+
+### Cross-platform note
+
+On platforms other than Linux/IBus, evdev scancodes are not available. Windows
+uses virtual key codes; macOS uses hardware-independent key codes. A clean
+cross-platform design would abstract `AplKeycodeToChars` behind a platform
+interface and provide per-platform implementations:
+
+- Linux/IBus: evdev scancodes (`keycode` parameter, evdev+8 convention)
+- Windows: virtual key codes via `MapVirtualKey(vk, MAPVK_VK_TO_CHAR)` on a
+  US QWERTY layout handle
+- macOS: `kVK_*` constants from `<Carbon/Carbon.h>`
+
+All three platforms have a stable physical-position-to-ASCII mapping for
+QWERTY keyboards; the differences are only in how you get there.

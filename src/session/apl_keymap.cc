@@ -39,7 +39,8 @@ std::optional<absl::string_view> GetAplGlyph(uint32_t key_code) {
   // Reference: https://help.dyalog.com/latest/Content/Language/Introduction/Keyboard/APL_Keyboards.htm
   static const auto* kMap =
       new absl::flat_hash_map<uint32_t, absl::string_view>({
-          // Top row (digits)
+          // Top row
+          {'`', "⋄"},  // diamond (statement separator)
           {'1', "¨"},  // diaeresis
           {'2', "¯"},  // high minus (macron)
           {'3', "<"},  // less-than
@@ -66,7 +67,7 @@ std::optional<absl::string_view> GetAplGlyph(uint32_t key_code) {
           {'p', "⋆"},  // star (power)
           {'[', "←"},  // left-arrow (assignment / receive)
           {']', "→"},  // right-arrow (branch)
-          {'\\', "⍀"}, // backslash-bar (scan with axis)
+          {'\\', "⊢"}, // right-tack (same / right)
 
           // ASDF row
           {'a', "⍺"},  // alpha (left argument)
@@ -89,8 +90,8 @@ std::optional<absl::string_view> GetAplGlyph(uint32_t key_code) {
           {'b', "⊥"},  // up-tack (decode / base value)
           {'n', "⊤"},  // down-tack (encode)
           {'m', "∣"},  // stile (absolute value / residue)
-          {',', "⍪"},  // comma-bar (table)
-          {'.', "⍀"},  // dot (inner/outer product used with /)
+          {',', "⍝"},  // lamp (comment)
+          {'.', "⍀"},  // backslash-bar (scan with axis / expand first)
           {'/', "⌿"},  // slash-bar (replicate with axis)
       });
 
@@ -109,15 +110,17 @@ std::optional<absl::string_view> GetAplShiftedGlyph(uint32_t key_code) {
   // keys appear as their shifted symbols ('{', '}', ':', '"', '<', '>', '?', '|').
   //
   // Reference: Dyalog APL US keyboard layout (Ctrl+Shift layer)
-  // Note: on UK layout ≢ lives on the ISO '#' key (Ctrl+Shift+# → '~');
-  // on US layout the same APL position is the apostrophe key (Ctrl+Shift+' → '"').
+  // UK/US differences: on UK layout Shift+2='\"' so ⍫ lives on '@'; on US
+  // Shift+2='@', which is what this table uses.  Similarly, ≢ on US is at
+  // Ctrl+Shift+' → '"'; on UK the apostrophe key produces '@' when shifted,
+  // so UK users reach ≢ via the ISO extra '#~' key — which has no APL glyph
+  // in this layout and is therefore inaccessible on UK keyboards without XKB.
   static const auto* kShiftedMap =
       new absl::flat_hash_map<uint32_t, absl::string_view>({
           // Number row — Ctrl+Shift+key → shifted keyval (US layout)
-          // Alignment: ` 1 _ 3 4 5 6 7 8 9 0 - =  (_ = nothing on key 2)
           {'~', "⌺"},  // stencil — Ctrl+Shift+`
           {'!', "⌶"},  // I-beam — Ctrl+Shift+1
-          // '@' (Ctrl+Shift+2) → nothing
+          {'@', "⍫"},  // del-tilde — Ctrl+Shift+2
           {'#', "⍒"},  // grade down — Ctrl+Shift+3
           {'$', "⍋"},  // grade up — Ctrl+Shift+4
           {'%', "⌽"},  // rotate / reverse — Ctrl+Shift+5
@@ -141,10 +144,11 @@ std::optional<absl::string_view> GetAplShiftedGlyph(uint32_t key_code) {
           {'}', "⍬"},  // zilde (empty numeric vector)
 
           // ASDF row (letters)
-          {'F', "⍛"},  // circle-star
-          {'J', "⍤"},  // jot-diaeresis (rank)
-          {'K', "⌸"},  // quad-equal (key / from)
-          {'L', "⌷"},  // squish-quad (index)
+          {'F', "⍛"},  // jot-diaeresis (variant) — Ctrl+Shift+f
+          {'G', "⍢"},  // del-diaeresis — Ctrl+Shift+g
+          {'J', "⍤"},  // jot-diaeresis (rank) — Ctrl+Shift+j
+          {'K', "⌸"},  // quad-equal (key / from) — Ctrl+Shift+k
+          {'L', "⌷"},  // squish-quad (index) — Ctrl+Shift+l
 
           // ASDF row (punctuation — Ctrl+Shift+; → ':', Ctrl+Shift+' → '"')
           {':', "≡"},  // identical to
@@ -154,7 +158,10 @@ std::optional<absl::string_view> GetAplShiftedGlyph(uint32_t key_code) {
           {'|', "⊣"},  // left-tack
 
           // ZXCV row (letters)
-          {'Z', "⊆"},  // left-shoe-underbar (partition)
+          {'Z', "⊆"},  // left-shoe-underbar (partition) — Ctrl+Shift+z
+          {'X', "⊇"},  // right-shoe-underbar — Ctrl+Shift+x
+          {'N', "¤"},  // currency sign — Ctrl+Shift+n
+          {'M', "∥"},  // parallel to — Ctrl+Shift+m
 
           // ZXCV row (punctuation — Ctrl+Shift+, → '<', . → '>', / → '?')
           {'<', "⍪"},  // comma-bar (table)

@@ -106,6 +106,7 @@ std::optional<AplKeyChars> AplKeycodeToChars(uint keycode) {
       {44, {'z', 'Z'}}, {45, {'x', 'X'}}, {46, {'c', 'C'}}, {47, {'v', 'V'}},
       {48, {'b', 'B'}}, {49, {'n', 'N'}}, {50, {'m', 'M'}},
       {51, {',', '<'}}, {52, {'.', '>'}}, {53, {'/', '?'}},
+      {86, {'\\', '|'}},  // KEY_102ND — UK ISO extra key (between LShift and Z)
   });
   const AplKeyChars* chars = kMap.FindOrNull(keycode);
   if (chars == nullptr) return std::nullopt;
@@ -560,6 +561,32 @@ bool MozcEngine::ProcessKeyEvent(IbusEngineWrapper *engine, uint keyval,
         return false;
       }
     }
+  }
+
+  // Ctrl (IBUS_CONTROL_MASK) APL shifting key intercept.
+  // Runs before GetKeyEvent() to use the layout-independent hardware keycode
+  // (evdev scancode) rather than the layout-dependent keyval.  Without this,
+  // UK keyboards produce wrong APL glyphs because Shift is encoded differently
+  // into keyvals (e.g. UK Shift+2='"' vs US Shift+2='@'), causing the shifted
+  // map to match the wrong physical keys.
+  if ((modifiers & IBUS_CONTROL_MASK) && !(modifiers & IBUS_RELEASE_MASK) &&
+      (apl_shifting_key_set_.left_ctrl() || apl_shifting_key_set_.right_ctrl()) &&
+      property_handler_->GetOriginalCompositionMode() == commands::APL) {
+    std::optional<AplKeyChars> chars = AplKeycodeToChars(keycode);
+    if (chars.has_value()) {
+      const bool is_shifted = (modifiers & IBUS_SHIFT_MASK) != 0;
+      const uint32_t kc = is_shifted ? static_cast<uint32_t>(chars->shifted)
+                                     : static_cast<uint32_t>(chars->unshifted);
+      std::optional<absl::string_view> glyph = session::GetAplShiftedGlyph(kc);
+      if (!glyph.has_value()) glyph = session::GetAplGlyph(kc);
+      if (glyph.has_value()) {
+        engine->CommitText(*glyph);
+        return true;
+      }
+      return false;  // Ctrl+key has no APL mapping — pass to app, skip mozc server
+    }
+    // keycode not in AplKeycodeToChars (e.g. Ctrl+Enter, Ctrl+Backspace):
+    // fall through to GetKeyEvent() so mozc server can handle it normally.
   }
 
   // layout_is_jp is only used determine Kana input with US layout.
