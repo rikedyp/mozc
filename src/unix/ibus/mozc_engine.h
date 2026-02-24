@@ -151,6 +151,10 @@ class MozcEngine : public EngineInterface {
   // True while the Caps Lock key is physically held (hold-down shifting mode).
   // Reset on FocusOut to avoid sticking if key-up is missed during focus change.
   bool caps_lock_held_ = false;
+  // True while Left/Right Super (Windows key) is physically held.
+  // Reset on FocusOut alongside caps_lock_held_.
+  bool left_super_held_  = false;
+  bool right_super_held_ = false;
 
   // Unique IDs of candidates that are currently shown.
   std::vector<int32_t> unique_candidate_ids_;

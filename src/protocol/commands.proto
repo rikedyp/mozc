@@ -237,6 +237,8 @@ message KeyEvent {
     RIGHT_ALT = 512;
     RIGHT_SHIFT = 1024;
     CAPS = 2048;
+    LEFT_SUPER  = 4096;
+    RIGHT_SUPER = 8192;
   }
   // LINT.ThenChange(
   //     composer/key_parser.cc,

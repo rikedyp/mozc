@@ -396,6 +396,8 @@ void MozcEngine::FocusOut(IbusEngineWrapper *engine) {
   { FILE* f = fopen("/tmp/mozc_lifecycle.txt", "a");
     if (f) { fprintf(f, "FocusOut\n"); fclose(f); } }
   caps_lock_held_ = false;  // reset hold state in case key-up was missed during focus change
+  left_super_held_  = false;
+  right_super_held_ = false;
   GetCandidateWindowHandler(engine)->Hide(engine);
   property_handler_->ResetContentType(engine);
 
@@ -513,6 +515,44 @@ bool MozcEngine::ProcessKeyEvent(IbusEngineWrapper *engine, uint keyval,
     return false;
   }
 
+  // Super (Windows key, IBUS_MOD4_MASK) APL shifting key intercept.
+  // MOD4 events are discarded by the kExtraModMask filter in key_event_handler
+  // (the filter was added to protect Super+Space / IBus input-method switching).
+  // Intercept here before GetKeyEvent(), following the same pattern as AltGr above.
+  // left_super_held_ / right_super_held_ track which physical Super key is down so
+  // we can honour independent left/right configuration.
+  if ((apl_shifting_key_set_.left_super() || apl_shifting_key_set_.right_super()) &&
+      property_handler_->GetOriginalCompositionMode() == commands::APL) {
+    // Bare Super key: track hold state and consume to prevent the desktop
+    // environment from triggering activities / taskbar (same as Alt suppression).
+    if (keyval == IBUS_Super_L || keyval == IBUS_Super_R) {
+      bool& held = (keyval == IBUS_Super_L) ? left_super_held_ : right_super_held_;
+      held = !(modifiers & IBUS_RELEASE_MASK);
+      return true;  // consume bare Super modifier event
+    }
+    // Super+key: look up APL glyph, honouring left/right configuration.
+    if ((modifiers & IBUS_MOD4_MASK) && !(modifiers & IBUS_RELEASE_MASK)) {
+      const bool active =
+          (apl_shifting_key_set_.left_super()  && left_super_held_) ||
+          (apl_shifting_key_set_.right_super() && right_super_held_);
+      if (active) {
+        std::optional<AplKeyChars> chars = AplKeycodeToChars(keycode);
+        if (chars.has_value()) {
+          const bool is_shifted = (modifiers & IBUS_SHIFT_MASK) != 0;
+          const uint32_t kc = is_shifted ? static_cast<uint32_t>(chars->shifted)
+                                         : static_cast<uint32_t>(chars->unshifted);
+          std::optional<absl::string_view> glyph = session::GetAplShiftedGlyph(kc);
+          if (!glyph.has_value()) glyph = session::GetAplGlyph(kc);
+          if (glyph.has_value()) {
+            engine->CommitText(*glyph);
+            return true;
+          }
+        }
+        return false;
+      }
+    }
+  }
+
   // layout_is_jp is only used determine Kana input with US layout.
   const absl::string_view layout = ibus_config_.GetLayout(engine->GetName());
   const bool layout_is_jp = (layout != "us");
@@ -560,6 +600,10 @@ void MozcEngine::PropertyActivate(IbusEngineWrapper *engine,
                                   uint property_state) {
   property_handler_->ProcessPropertyActivate(engine, property_name,
                                              property_state);
+  // Refresh the cached APL shifting key set after the user toggles a key.
+  if (absl::string_view(property_name).starts_with("AplShift.")) {
+    UpdatePreeditMethod();
+  }
 }
 
 void MozcEngine::PropertyHide(IbusEngineWrapper *engine,

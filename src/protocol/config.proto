@@ -379,6 +379,8 @@ message Config {
     optional bool left_alt   = 3 [default = false];
     optional bool right_alt  = 4 [default = false];
     optional bool caps_lock  = 5 [default = false];  // latch: APL shift when Caps Lock LED is on
+    optional bool left_super  = 6 [default = false];  // Left Windows key (Super_L / IBUS_MOD4_MASK)
+    optional bool right_super = 7 [default = false];  // Right Windows key (Super_R / IBUS_MOD4_MASK)
   }
   optional AplShiftingKeySet apl_shifting_key_set = 122;
 

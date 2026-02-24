@@ -92,6 +92,8 @@ class PropertyHandler {
   void AppendCompositionPropertyToPanel();
   // Appends tool properties into panel
   void AppendToolPropertyToPanel();
+  // Appends APL shifting key toggle menu into panel
+  void AppendAplShiftingKeyPropertyToPanel();
   // Appends switch properties into panel
   void UpdateCompositionModeIcon(
       IbusEngineWrapper *engine,
@@ -101,6 +103,7 @@ class PropertyHandler {
   IbusPropListWrapper prop_root_;
   IbusPropertyWrapper prop_composition_mode_;
   IbusPropertyWrapper prop_mozc_tool_;
+  IbusPropertyWrapper prop_apl_shifting_key_;
   client::ClientInterface *client_;
   std::unique_ptr<MessageTranslatorInterface> translator_;
   commands::CompositionMode original_composition_mode_;

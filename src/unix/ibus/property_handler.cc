@@ -35,6 +35,7 @@
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "base/const.h"
+#include "protocol/config.pb.h"
 #include "base/file_util.h"
 #include "base/system_util.h"
 #include "client/client.h"  // For client interface
@@ -117,6 +118,47 @@ constexpr MozcEngineToolProperty kMozcEngineToolProperties[] = {
     },
 };
 
+// APL shifting key menu entries — one toggle per configurable modifier.
+struct AplShiftingKeyPropEntry {
+  const char *key;    // IBus property key, e.g. "AplShift.LeftCtrl"
+  const char *label;  // Display text shown in the submenu
+};
+
+constexpr AplShiftingKeyPropEntry kAplShiftingKeyProps[] = {
+    {"AplShift.LeftCtrl",   "Left Ctrl"},
+    {"AplShift.RightCtrl",  "Right Ctrl"},
+    {"AplShift.LeftAlt",    "Left Alt"},
+    {"AplShift.RightAlt",   "Right Alt (AltGr)"},
+    {"AplShift.CapsLock",   "Caps Lock"},
+    {"AplShift.LeftSuper",  "Left Super (Win)"},
+    {"AplShift.RightSuper", "Right Super (Win)"},
+};
+
+// Returns the current enabled state for the given shifting key property key.
+bool GetAplShiftKeyValue(const config::Config::AplShiftingKeySet &ks,
+                         absl::string_view key) {
+  if (key == "AplShift.LeftCtrl")   return ks.left_ctrl();
+  if (key == "AplShift.RightCtrl")  return ks.right_ctrl();
+  if (key == "AplShift.LeftAlt")    return ks.left_alt();
+  if (key == "AplShift.RightAlt")   return ks.right_alt();
+  if (key == "AplShift.CapsLock")   return ks.caps_lock();
+  if (key == "AplShift.LeftSuper")  return ks.left_super();
+  if (key == "AplShift.RightSuper") return ks.right_super();
+  return false;
+}
+
+// Sets the given shifting key field to |value| in |ks|.
+void SetAplShiftKeyValue(config::Config::AplShiftingKeySet *ks,
+                         absl::string_view key, bool value) {
+  if      (key == "AplShift.LeftCtrl")   ks->set_left_ctrl(value);
+  else if (key == "AplShift.RightCtrl")  ks->set_right_ctrl(value);
+  else if (key == "AplShift.LeftAlt")    ks->set_left_alt(value);
+  else if (key == "AplShift.RightAlt")   ks->set_right_alt(value);
+  else if (key == "AplShift.CapsLock")   ks->set_caps_lock(value);
+  else if (key == "AplShift.LeftSuper")  ks->set_left_super(value);
+  else if (key == "AplShift.RightSuper") ks->set_right_super(value);
+}
+
 constexpr commands::CompositionMode kImeOffCompositionMode = commands::DIRECT;
 
 // Returns true if mozc_tool is installed.
@@ -147,6 +189,7 @@ PropertyHandler::PropertyHandler(
     : prop_root_(),
       prop_composition_mode_(nullptr),
       prop_mozc_tool_(nullptr),
+      prop_apl_shifting_key_(nullptr),
       client_(client),
       translator_(std::move(translator)),
       original_composition_mode_(commands::APL),
@@ -166,6 +209,7 @@ PropertyHandler::PropertyHandler(
 
   AppendCompositionPropertyToPanel();
   AppendToolPropertyToPanel();
+  AppendAplShiftingKeyPropertyToPanel();
 
   // We have to sink |prop_root_| as well so ibus_engine_register_properties()
   // in FocusIn() does not destruct it.
@@ -178,6 +222,7 @@ PropertyHandler::~PropertyHandler() {
 
   // The ref counter will drop to one.
   prop_mozc_tool_.Unref();
+  prop_apl_shifting_key_.Unref();
 
   // Destroy all objects under the root.
   prop_root_.Unref();
@@ -239,6 +284,38 @@ void PropertyHandler::AppendCompositionPropertyToPanel() {
   prop_composition_mode_.RefSink();
 
   prop_root_.Append(&prop_composition_mode_);
+}
+
+void PropertyHandler::AppendAplShiftingKeyPropertyToPanel() {
+  IbusPropListWrapper sub_prop_list;
+
+  // Read current config to set initial checked states.
+  config::Config config;
+  config::Config::AplShiftingKeySet ks;
+  if (client_->GetConfig(&config) && config.has_apl_shifting_key_set()) {
+    ks = config.apl_shifting_key_set();
+  } else {
+    // Default: both Ctrl keys active.
+    ks.set_left_ctrl(true);
+    ks.set_right_ctrl(true);
+  }
+
+  for (const AplShiftingKeyPropEntry &entry : kAplShiftingKeyProps) {
+    const IBusPropState state = GetAplShiftKeyValue(ks, entry.key)
+                                    ? PROP_STATE_CHECKED
+                                    : PROP_STATE_UNCHECKED;
+    IbusPropertyWrapper item(entry.key, PROP_TYPE_TOGGLE,
+                             translator_->MaybeTranslate(entry.label),
+                             "" /* icon */, state, nullptr);
+    sub_prop_list.Append(&item);
+  }
+
+  prop_apl_shifting_key_.Initialize(
+      "AplShiftKey", PROP_TYPE_MENU,
+      translator_->MaybeTranslate("APL Shifting Key"),
+      "" /* icon */, PROP_STATE_UNCHECKED, sub_prop_list.GetPropList());
+  prop_apl_shifting_key_.RefSink();
+  prop_root_.Append(&prop_apl_shifting_key_);
 }
 
 void PropertyHandler::UpdateContentTypeImpl(IbusEngineWrapper *engine,
@@ -412,6 +489,28 @@ void PropertyHandler::ProcessPropertyActivate(IbusEngineWrapper *engine,
       }
       if (!client_->LaunchTool(entry->mode, "")) {
         LOG(ERROR) << "cannot launch: " << entry->mode;
+      }
+      return;
+    }
+  }
+
+  if (prop_apl_shifting_key_.IsInitialized()) {
+    for (uint prop_index = 0;; ++prop_index) {
+      IbusPropertyWrapper prop = prop_apl_shifting_key_.GetSubProp(prop_index);
+      if (!prop.IsInitialized()) break;
+      if (prop.GetKey() != property_name) continue;
+
+      // Toggle the field in config and save.
+      config::Config config;
+      if (!client_->GetConfig(&config)) {
+        LOG(ERROR) << "GetConfig failed for APL shifting key toggle";
+        return;
+      }
+      const bool new_value = (property_state == PROP_STATE_CHECKED);
+      SetAplShiftKeyValue(config.mutable_apl_shifting_key_set(),
+                          property_name, new_value);
+      if (!client_->SetConfig(config)) {
+        LOG(ERROR) << "SetConfig failed for APL shifting key toggle";
       }
       return;
     }

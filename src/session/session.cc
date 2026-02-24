@@ -2229,8 +2229,11 @@ bool Session::TryAplShiftedKey(commands::Command* command) {
       if (ks.right_alt()  && mod == commands::KeyEvent::RIGHT_ALT)  has_shifting_key = true;
       if (ks.left_alt() && ks.right_alt() &&
           mod == commands::KeyEvent::ALT)                            has_shifting_key = true;
-      // caps_lock shifting is handled at the engine level (mozc_engine.cc) via
-      // caps_lock_held_; it does not reach here as a modifier flag.
+      if (ks.left_super()  && mod == commands::KeyEvent::LEFT_SUPER)  has_shifting_key = true;
+      if (ks.right_super() && mod == commands::KeyEvent::RIGHT_SUPER) has_shifting_key = true;
+      // caps_lock / super shifting is handled at the engine level (mozc_engine.cc);
+      // caps_lock_held_ / left_super_held_ / right_super_held_ do not reach here
+      // as modifier flags on Linux/IBus.  The checks above cover other platforms.
     } else {
       // Fallback: deprecated single-key enum, or default (both Ctrl keys).
       switch (cfg.apl_shifting_key()) {
