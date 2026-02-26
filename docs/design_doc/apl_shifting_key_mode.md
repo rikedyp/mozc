@@ -1754,3 +1754,182 @@ interface and provide per-platform implementations:
 
 All three platforms have a stable physical-position-to-ASCII mapping for
 QWERTY keyboards; the differences are only in how you get there.
+
+---
+
+Design Notes: Evdev vs XKB Symbols for Shifting Key Output
+===========================================================
+
+During development, an alternative approach to shifting-key glyph output was
+considered — operating at the evdev/uinput level, as used by the keyboard
+remapping tool Kanata (https://github.com/jtroo/kanata). This section records
+the trade-off analysis and the rationale for choosing XKB symbols instead.
+
+The evdev/uinput approach (Kanata-style)
+-----------------------------------------
+
+Kanata handles keyboard remapping on Linux by:
+
+1. **Grabbing the input device exclusively** via `ioctl(EVIOCGRAB)` on the
+   evdev device (`/dev/input/eventN`). This removes the device from the normal
+   input chain — X11, Wayland, IBus, and all applications above them see
+   nothing.
+
+2. **Processing all events** in userspace: when a shifting modifier is held,
+   inject the mapped output; otherwise re-inject the raw key event via a
+   uinput virtual device so the rest of the system sees it normally.
+
+3. **Writing output via uinput**: the virtual device appears to X11/Wayland as
+   an ordinary keyboard. Modifier state (Ctrl, Alt, etc.) is synthesised as raw
+   key events, which the compositor's own modifier-state machine then processes.
+
+This approach cleanly solves the modifier-interception problem: because the
+grab happens below X11/Wayland, compositor hotkeys and desktop-environment key
+bindings never see the raw events. Kanata can therefore treat any modifier as
+a shifting key without the conflicts that arise at the IBus level.
+
+**Why it was not adopted for APL glyph output**
+
+The fundamental limitation is that there is no reliable mechanism to inject an
+arbitrary Unicode codepoint via uinput. The options available at that layer are:
+
+| Method | Works in | Problems |
+|--------|----------|----------|
+| Ctrl+Shift+U sequence | GTK apps only | Fails in terminals, Qt, Electron, most Wayland-native apps |
+| XDoTool-style keysym injection | X11 only | Broken on Wayland |
+| Clipboard paste | Everywhere | Clobbers clipboard; introduces async timing issues |
+
+Kanata exposes a `unicode` keyword for this purpose and documents that it has
+problems in some applications — for exactly these reasons. Adopting the evdev
+approach would trade the IBus modifier-interception problem for this Unicode
+output problem, without actually resolving it.
+
+Additional costs of the evdev approach:
+
+- Requires membership of the `input` group (or root) — a security and
+  packaging consideration not required for a pure IBus/XKB solution.
+- Requires a separate always-running daemon (or tight integration into the
+  `ibus-engine-mozc` process) with event-loop ownership of the device.
+- Loop prevention: the daemon must distinguish its own injected events from
+  physical events to avoid re-processing them.
+- Cannot easily coexist with IBus for non-shifted input without careful
+  passthrough routing.
+
+Decision: XKB symbols as the shifting-key output mechanism
+-----------------------------------------------------------
+
+XKB (X Keyboard Extension) solves both the modifier-interception and Unicode
+output problems cleanly:
+
+- XKB runs inside the compositor or X server — below IBus, below applications.
+  It processes key events before IBus sees them. A key combination bound at
+  XKB Level 3 (AltGr) or any other XKB level is resolved to a Unicode
+  codepoint by the compositor's own keyboard handling and delivered to the
+  focused application as a normal character input. No Unicode injection is
+  involved.
+- Every application — terminal, Electron, Qt, GTK, native Wayland — receives
+  the character through the standard text input path. There are no per-app
+  compatibility issues.
+- No daemon, no device grab, no root access required for user-space
+  installation (see Packaging section below).
+
+**Division of responsibility**
+
+The XKB and IBus/Mozc layers are complementary and non-overlapping:
+
+| Layer | Handles |
+|-------|---------|
+| XKB symbols file | Shifting-key glyph output (AltGr+key → APL glyph) |
+| IBus / Mozc | Prefix input, keyword search, idiom lookup, prediction |
+
+XKB intercepts shifted key combinations before IBus sees them. Mozc therefore
+handles only unshifted keystrokes in its normal composition pipeline. The two
+systems do not conflict.
+
+This is the established approach used by existing APL input methods on Linux
+(e.g. the `apl` XKB layout shipped with most distributions, and the layouts
+distributed by Dyalog and GNU APL). Adopting it aligns with user expectations
+and avoids reinventing a solved problem.
+
+The implementation details of the XKB symbols file, option registration, and
+per-desktop-environment activation are covered in Steps 2.10 and 2.11.
+
+---
+
+Design Notes: Packaging Considerations
+=======================================
+
+Distributing this tool through standard package repositories (apt, pacman,
+rpm, etc.) is a goal. The Mozc binary and data files package straightforwardly,
+but the XKB symbols file introduces complications that are worth recording.
+
+Why XKB files are awkward to package
+--------------------------------------
+
+System-wide XKB files live in `/usr/share/X11/xkb/symbols/`. This directory
+is owned by the `xkeyboard-config` package (Debian/Ubuntu: `xkb-data`; Fedora:
+`xkeyboard-config`). To register a layout so it appears in desktop environment
+keyboard settings, the rules file `evdev.xml` in the same package must also be
+modified.
+
+A package that writes into `/usr/share/X11/xkb/` either:
+
+- **Conflicts with `xkb-data`**, which is present on virtually every Linux
+  desktop installation, or
+- **Uses a post-install script** to copy or merge files — which risks being
+  silently overwritten when `xkb-data` is upgraded.
+
+Neither is clean from a packaging perspective.
+
+User-space installation path
+------------------------------
+
+libxkbcommon 1.0 (released 2020) added support for a user-level XKB search
+path at `~/.config/xkb/`. Compositors and X servers using libxkbcommon honour
+this path without requiring root access or touching system files:
+
+```
+~/.config/xkb/symbols/apl    ← the APL symbols file
+~/.config/xkb/rules/          ← optional: local rules fragment
+```
+
+This is the preferred installation path. It is supported by most modern
+Wayland compositors (GNOME/Mutter, KDE/KWin, sway, Hyprland) and X11 setups
+using libxkbcommon. The limitation is that user-installed layouts do not appear
+in desktop environment keyboard settings GUIs — activation must be done via
+`setxkbmap`, `gsettings`, or equivalent (see Step 2.11 for per-DE details).
+
+Realistic packaging outcome
+-----------------------------
+
+A two-tier approach is expected:
+
+| Component | Packaging |
+|-----------|-----------|
+| Mozc APL binary + data files | Standard distro package (deb/rpm/AUR PKGBUILD) |
+| XKB symbols file | Installed to `~/.config/xkb/` by a post-install hook or `mozc-apl-setup` helper command |
+| XKB activation | Per-DE, handled by `mozc-apl-setup` (detects session/desktop and applies the appropriate mechanism — see Step 2.11) or documented as manual steps |
+
+The `mozc-apl-setup` helper approach is common in the IME ecosystem: `im-config`
+and `im-chooser` already perform desktop-environment detection to activate input
+methods. A small setup command that sniffs `XDG_SESSION_TYPE` and
+`XDG_CURRENT_DESKTOP` and applies the correct `setxkbmap`/`gsettings`/
+`kwriteconfig` incantation is packageable, auditable, and reversible.
+
+For package repositories that do not support post-install scripts well (e.g.
+some Flatpak and Snap configurations), or for desktops that are not
+automatically detected, the fallback is a documented set of manual steps per
+operating system and desktop environment. This is not unusual: the upstream
+Mozc packages on most distributions already require manual IME activation steps
+after installation. The XKB step is one additional operation of the same
+character.
+
+**Tentative packaging plan per distribution type**
+
+| Distribution | Binary package | XKB setup |
+|---|---|---|
+| Debian/Ubuntu (deb) | Package with `Recommends: mozc-apl-setup` | Post-install script installs to `~/.config/xkb/` and runs DE detection |
+| Arch Linux (AUR) | PKGBUILD with `install` hook | Same |
+| Fedora (rpm) | spec with `%post` | Same |
+| Flatpak/Snap | Bundled binary | Manual instructions only (sandbox restrictions prevent XKB file installation) |
+| Source build | `install.sh` already present | Extend `install.sh` with XKB step |
