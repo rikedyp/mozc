@@ -324,9 +324,11 @@ One intercept block in `mozc_engine.cc` serves all shifting keys uniformly.
 Design Notes: Evdev vs XKB Symbols for Shifting Key Output
 ===========================================================
 
-An alternative approach — operating at the evdev/uinput level (Kanata-style)
-— was considered. It was not adopted because there is no reliable mechanism to
-inject arbitrary Unicode codepoints via uinput:
+### Why not use uinput for glyph output directly
+
+An approach of using evdev/uinput to inject APL glyphs as output was
+considered and rejected. There is no reliable mechanism to inject arbitrary
+Unicode codepoints via uinput:
 
 | Method | Works in | Problems |
 |--------|----------|---------|
@@ -334,9 +336,8 @@ inject arbitrary Unicode codepoints via uinput:
 | XDoTool keysym injection | X11 only | Broken on Wayland |
 | Clipboard paste | Everywhere | Clobbers clipboard; async timing issues |
 
-Additional costs of the evdev approach: requires `input` group membership or
-root; requires a separate daemon; loop prevention complexity; cannot easily
-coexist with IBus for non-shifted input.
+Note: uinput *can* reliably output Linux `KEY_*` keycodes — the limitation
+above is specific to injecting Unicode codepoints as output.
 
 **Decision: XKB symbols as the output mechanism for AltGr and other
 hard-to-intercept keys.**
@@ -357,6 +358,55 @@ user-space installation (`~/.config/xkb/`).
 This is the established approach used by existing APL input methods on Linux
 (e.g. the `apl` XKB layout shipped with most distributions, and the layouts
 distributed by Dyalog and GNU APL).
+
+### Investigation: Kanata for arbitrary shifting keys
+
+**Conclusion: not viable. XKB remains the correct approach.**
+
+The XKB+IBus design cannot support arbitrary user-chosen shifting keys because
+some combinations (e.g. `Super+letter`) are grabbed by the compositor before
+IBus sees them. This was investigated as a potential limitation worth solving:
+every user has different applications, locales, and desktop configurations that
+restrict which key combinations are practical.
+
+Kanata — a keyboard remapper operating at the evdev level — was investigated
+as a potential solution. Kanata grabs the physical input device directly, so
+the compositor never sees the original keypress. This was confirmed to work on
+KDE Plasma 6: `Super+D` (normally minimises all windows) was intercepted by
+Kanata before KDE acted on it.
+
+**However, the signalling problem is fatal to this approach.**
+
+For Kanata to communicate which APL glyph to output, it must emit a signal
+that IBus can interpret. Two options were considered:
+
+*Raw keycodes*: Kanata emits an unused Linux `KEY_*` code; IBus maps it to a
+glyph. Tested with `KEY_F13` — KDE Plasma opened a menu, confirming that the
+compositor grabs the virtual device's output before IBus sees it. There is no
+guaranteed "safe" keycode: compositors can bind any named keysym, and
+different DEs have different defaults.
+
+*Modifier normalisation*: Kanata emits `[letter]` with a rarely-used modifier
+bit set — e.g. `Hyper` or `ISO_Level5_Shift` — and IBus checks for that
+modifier. However, on Wayland, modifier state is computed entirely by XKB from
+the active keymap. For either modifier to appear in the event, the keymap must
+define a key as generating that modifier. This requires an XKB symbols file
+entry. At that point the XKB file is doing the essential work, and Kanata is
+only adding the "remap arbitrary physical key → that modifier" step — with
+significant added cost:
+
+- Kanata requires a separate install and a daemon running before the session
+- Requires `input` group membership or a udev rule (elevated device access)
+- Any process with `/dev/input/event*` access can read all keystrokes,
+  including passwords — a trust concern for many users
+- The Kanata config must stay in sync with the IBus shifting-key setting
+
+Since an XKB symbols file is needed regardless, the full shifting-key layout
+can be implemented in XKB alone with no additional tooling. This is exactly
+how the established APL input methods (Dyalog, GNU APL, the `apl` XKB layout)
+handle it. **The limitation stands**: shifting keys are restricted to
+combinations that compositors do not grab, which in practice means AltGr and
+(on most DEs) Ctrl and Alt for letter keys.
 
 **XKB symbols file structure** (`data/xkb/apl`):
 
