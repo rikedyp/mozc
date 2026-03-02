@@ -237,23 +237,6 @@ bool CanSurroundingText(absl::string_view bundle_id) {
 
   // We don't check the return value of NSBundle because it fails during tests.
   [[NSBundle mainBundle] loadNibNamed:@"Config" owner:self topLevelObjects:nil];
-  // Programmatically wire submenu item targets — XIB connections to File's
-  // Owner don't reliably dispatch actions for submenu items in IMK context.
-  if (menu_) {
-    for (NSMenuItem *item in [menu_ itemArray]) {
-      if ([item hasSubmenu]) {
-        for (NSMenuItem *subItem in [[item submenu] itemArray]) {
-          if ([subItem tag] == 100) {
-            [subItem setTarget:self];
-            [subItem setAction:@selector(aplShiftingKeyCtrlClicked:)];
-          } else if ([subItem tag] == 101) {
-            [subItem setTarget:self];
-            [subItem setAction:@selector(aplShiftingKeyOptionClicked:)];
-          }
-        }
-      }
-    }
-  }
   if (!originalString_ || !composedString_ || !mozcRenderer_ || !mozcClient_) {
     self = nil;
   } else {
