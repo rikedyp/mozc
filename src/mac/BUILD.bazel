@@ -156,7 +156,10 @@ mozc_objc_library(
 mozc_objc_library(
     name = "mozc_imk_input_controller",
     srcs = ["mozc_imk_input_controller.mm"],
-    hdrs = ["mozc_imk_input_controller.h"],
+    hdrs = [
+        "apl_keycode_map.h",
+        "mozc_imk_input_controller.h",
+    ],
     data = [
         "English.lproj/Config.xib",
         "Japanese.lproj/Config.xib",
