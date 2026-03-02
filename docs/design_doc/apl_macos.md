@@ -333,7 +333,7 @@ back to Hiragana — verify Japanese input still works.
 
 **Result**: Implemented and verified. Selecting APL (Mozc) from the macOS keyboard installer puts the option in the taskbar menu. Typing with APL mode active passes through latin characters. The autocomplete menu still appears, which we might want to remove or create an option depending on whether we are doing keyword-based input. This will be addressed at a later stage.
 
-### Step M3: Virtual key → char table (pure data — no behavioral change)
+### Step M3: Virtual key → char table (pure data — no behavioral change) ✅ DONE
 
 Add `AplVirtualKeyToChar(unsigned short keyCode) → char` in the controller or a
 small header. Maps `kVK_ANSI_A → 'a'`, `kVK_ANSI_B → 'b'`, etc., covering all
@@ -342,10 +342,15 @@ keys in the APL glyph table.
 **Test**: Compile only. This is a data table with no call sites yet. Verify
 the build succeeds and normal typing still works.
 
-### Step M4: Config access for shifting key (wiring — no behavioral change)
+### Step M4: Config cache wiring (no behavioral change) ✅ DONE
 
-Call `mozcClient_->GetConfig(&config)` in `handleConfig` and cache
-`config.apl_shifting_key_set()` in an ivar. Refresh on every `activateServer:`.
+Add `aplShiftingKeyCtrl_` and `aplShiftingKeyOption_` bool ivars to the
+controller. Populate them from `config.apl_shifting_key_set()` at the end of
+`handleConfig` (which is called from `activateServer:` and
+`setValue:forTag:client:`). Also update the ivars immediately in the
+`aplShiftingKeyCtrlClicked:` / `aplShiftingKeyOptionClicked:` IBAction handlers
+right after `SetConfig`, so the cache stays current without waiting for the next
+`handleConfig` cycle.
 
 **Test**: Build and install. Change the shifting key via the M1 submenu, then
 switch apps and back. Verify (via `NSLog`) that the cached config matches what
