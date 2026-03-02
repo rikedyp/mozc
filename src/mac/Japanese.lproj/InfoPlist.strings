@@ -7,3 +7,4 @@ com.apple.inputmethod.Japanese.Katakana = "カタカナ (${INPUT_MODE_ANNOTATION
 com.apple.inputmethod.Japanese.HalfWidthKana = "半角カナ (${INPUT_MODE_ANNOTATION})";
 com.apple.inputmethod.Japanese.FullWidthRoman = "全角英数 (${INPUT_MODE_ANNOTATION})";
 com.apple.inputmethod.Roman = "英数 (${INPUT_MODE_ANNOTATION})";
+com.apple.inputmethod.Japanese.Apl = "APL (${INPUT_MODE_ANNOTATION})";

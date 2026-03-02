@@ -94,6 +94,7 @@ constexpr absl::string_view kKatakanaModeId = "com.apple.inputmethod.Japanese.Ka
 constexpr absl::string_view kHalfWidthKanaModeId = "com.apple.inputmethod.Japanese.HalfWidthKana";
 constexpr absl::string_view kFullWidthRomanModeId = "com.apple.inputmethod.Japanese.FullWidthRoman";
 constexpr absl::string_view kHiraganaModeId = "com.apple.inputmethod.Japanese";
+constexpr absl::string_view kAplModeId = "com.apple.inputmethod.Japanese.Apl";
 
 CompositionMode GetCompositionMode(absl::string_view mode_id) {
   if (mode_id.empty()) {
@@ -121,6 +122,9 @@ CompositionMode GetCompositionMode(absl::string_view mode_id) {
   if (mode_id == kHiraganaModeId) {
     return mozc::commands::HIRAGANA;
   }
+  if (mode_id == kAplModeId) {
+    return mozc::commands::APL;
+  }
 
   LOG(ERROR) << "The code should not reach here.";
   return mozc::commands::DIRECT;
@@ -139,6 +143,8 @@ absl::string_view GetModeId(CompositionMode mode) {
       return kFullWidthRomanModeId;
     case mozc::commands::HIRAGANA:
       return kHiraganaModeId;
+    case mozc::commands::APL:
+      return kAplModeId;
     default:
       LOG(ERROR) << "The code should not reach here.";
       return kRomanModeId;

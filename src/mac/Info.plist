@@ -167,6 +167,27 @@
 				<key>tsInputModeScriptKey</key>
 				<string>smRoman</string>
 			</dict>
+			<key>com.apple.inputmethod.Japanese.Apl</key>
+			<dict>
+				<key>TISInputSourceID</key>
+				<string>${PRODUCT_BUNDLE_IDENTIFIER}.Apl</string>
+				<key>TISIntendedLanguage</key>
+				<string>en</string>
+				<key>tsInputModeAlternateMenuIconFileKey</key>
+				<string>direct.tiff</string>
+				<key>tsInputModeDefaultStateKey</key>
+				<true/>
+				<key>tsInputModeIsVisibleKey</key>
+				<true/>
+				<key>tsInputModeMenuIconFileKey</key>
+				<string>direct.tiff</string>
+				<key>tsInputModePaletteIconFileKey</key>
+				<string>direct.tiff</string>
+				<key>tsInputModePrimaryInScriptKey</key>
+				<false/>
+				<key>tsInputModeScriptKey</key>
+				<string>smRoman</string>
+			</dict>
 		</dict>
 		<key>tsVisibleInputModeOrderedArrayKey</key>
 		<array>
@@ -175,6 +196,7 @@
 			<string>com.apple.inputmethod.Japanese.HalfWidthKana</string>
 			<string>com.apple.inputmethod.Japanese.FullWidthRoman</string>
 			<string>com.apple.inputmethod.Roman</string>
+			<string>com.apple.inputmethod.Japanese.Apl</string>
 		</array>
 	</dict>
 	<key>InputMethodConnectionName</key>
