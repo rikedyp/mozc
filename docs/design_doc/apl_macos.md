@@ -281,21 +281,74 @@ Phase 1 Plan: macOS POC
 
 **Goal**: APL mode active; Option+A → ⍺ committed in at least one target app.
 
-### Step M1: APL mode flag in macOS controller
+**Baseline**: Commit `d0a82cfa8e` — a reset Mozc build verified to support both
+alphanumeric (latin) and hiragana typing on macOS. The existing menu bar submenu
+shows: Reconversion, Preferences..., Add a word, Dictionary Tool..., About Mozc.
+
+### Implementation order rationale
+
+A previous attempt implemented all steps at once from the Linux shifting-key
+commit (`e09e30b6ca`). Two problems were observed:
+
+1. **Typing was completely broken** — no input worked at all. This *may* have
+   been stale IME state on macOS (a full MacBook restart was needed before even
+   the reset build worked), but the root cause was never isolated.
+2. **The shifting key menu did not appear** — the NSMenu submenu for selecting
+   Ctrl/Option was missing.
+
+Because issue (1) is ambiguous and issue (2) is a real code problem, the safest
+approach is to build incrementally from the verified-working reset commit. Each
+step is independently testable: if typing breaks, the offending change is
+immediately identifiable. The order below is chosen so that UI-only and
+data-only changes come first (zero risk of breaking input), with the behavioral
+`handleEvent:` intercept arriving last.
+
+### Step M1: NSMenu shifting key submenu (UI only — no behavioral change)
+
+Add an "APL Shifting Key" submenu to the existing `menu_` with items "Ctrl",
+"Option" (and optionally "Caps Lock"). Each item is checkmark-toggled via an
+`IBAction` that writes to `Config.apl_shifting_key_set` via
+`mozcClient_->GetConfig` / `mozcClient_->SetConfig`, then refreshes the
+controller's cached shifting key state.
+
+**Test**: Build and install. Open the Mozc menu from the macOS menu bar. Verify
+the "APL Shifting Key" submenu appears with the expected items. Verify that
+selecting an item persists across IME restarts. Verify that normal typing
+(alphanumeric and hiragana) still works — this step must not affect input at all.
+
+### Step M2: APL mode flag in macOS controller
 
 Add `bool apl_mode_active_` to `MozcImkInputController`. Set it when:
 - The server sends back `output.mode() == commands::APL`
 - Or via a new NSMenu "APL Mode" toggle (simpler for POC)
 
-For POC, a menu item is fine. Mode persistence across focus changes can come later.
+For POC, a menu item is fine. Mode persistence across focus changes can come
+later.
 
-### Step M2: Virtual key → char table
+**Test**: Build and install. Toggle APL mode via the menu. Verify the flag
+toggles (add a temporary `NSLog` if needed). Verify normal typing still works
+in both APL-on and APL-off states — this step adds the flag but no intercept
+logic yet, so input should be unaffected.
+
+### Step M3: Virtual key → char table (pure data — no behavioral change)
 
 Add `AplVirtualKeyToChar(unsigned short keyCode) → char` in the controller or a
 small header. Maps `kVK_ANSI_A → 'a'`, `kVK_ANSI_B → 'b'`, etc., covering all
 keys in the APL glyph table.
 
-### Step M3: Intercept in handleEvent:
+**Test**: Compile only. This is a data table with no call sites yet. Verify
+the build succeeds and normal typing still works.
+
+### Step M4: Config access for shifting key (wiring — no behavioral change)
+
+Call `mozcClient_->GetConfig(&config)` in `handleConfig` and cache
+`config.apl_shifting_key_set()` in an ivar. Refresh on every `activateServer:`.
+
+**Test**: Build and install. Change the shifting key via the M1 submenu, then
+switch apps and back. Verify (via `NSLog`) that the cached config matches what
+was selected. Verify normal typing still works.
+
+### Step M5: Intercept in handleEvent: (behavioral change — APL glyph insertion)
 
 Before `getMozcKeyCodeFromKeyEvent:`, add the intercept block:
 
@@ -329,18 +382,12 @@ if (apl_mode_active_) {
 }
 ```
 
-### Step M4: Config access for shifting key
+**Test**: Build and install. Enable APL mode, select Option as the shifting key.
+Press Option+A — expect ⍺. Press plain 'a' — expect 'a' committed directly.
+Disable APL mode — expect normal Mozc behavior restored. If typing is broken,
+this is the step that caused it.
 
-Call `mozcClient_->GetConfig(&config)` in `handleConfig` and cache
-`config.apl_shifting_key_set()` in an ivar. Refresh on every `activateServer:`.
-
-### Step M5: NSMenu shifting key submenu
-
-Add submenu to `menu_` with items "Ctrl", "Option" (and optionally "Caps Lock").
-Each item is checkmark-toggled via an IBAction that writes to `Config` and
-refreshes the cached config.
-
-### Step M6: Test
+### Step M6: Cross-app test matrix
 
 1. Build and install on macOS.
 2. Switch IME to Mozc, activate APL mode.
