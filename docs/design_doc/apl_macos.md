@@ -320,19 +320,16 @@ selecting an item persists across IME restarts. Verify that normal typing
 checkmarks toggle and persist across IME restarts (Mac restart required after
 install to clear stale IME state). Normal typing unaffected.
 
-### Step M2: APL mode flag in macOS controller
+### Step M2: APL as a first-class input mode
 
-Add `bool apl_mode_active_` to `MozcImkInputController`. Set it when:
-- The server sends back `output.mode() == commands::APL`
-- Or via a new NSMenu "APL Mode" toggle (simpler for POC)
+**Scope change**: M2 was originally a simple `apl_mode_active_` bool. It is now
+a full input mode registration through the Mozc composition mode pipeline,
+allowing APL to appear in the macOS keyboards menu alongside Hiragana, Katakana,
+etc. See [apl_input_mode.md](apl_input_mode.md) for the detailed design.
 
-For POC, a menu item is fine. Mode persistence across focus changes can come
-later.
-
-**Test**: Build and install. Toggle APL mode via the menu. Verify the flag
-toggles (add a temporary `NSLog` if needed). Verify normal typing still works
-in both APL-on and APL-off states — this step adds the flag but no intercept
-logic yet, so input should be unaffected.
+**Test**: Build and install. Verify "APL" appears in the macOS input source
+menu. Select it — type characters (they pass through as ASCII for now). Switch
+back to Hiragana — verify Japanese input still works.
 
 ### Step M3: Virtual key → char table (pure data — no behavioral change)
 
