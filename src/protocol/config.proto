@@ -360,6 +360,16 @@ message Config {
   // Use mode indicator feature.
   optional bool use_mode_indicator = 120 [default = true];
 
+  // APL shifting key configuration (macOS).
+  // Specifies which modifier key(s) activate APL glyph input.
+  // macOS does not distinguish left/right modifiers in the standard API.
+  message AplShiftingKeySet {
+    optional bool ctrl      = 1 [default = false];
+    optional bool option    = 2 [default = false];
+    optional bool caps_lock = 3 [default = false];
+  }
+  optional AplShiftingKeySet apl_shifting_key_set = 122;
+
   //////////////////////////////////////////////////////////////
   //
   // Cloud (300-319)

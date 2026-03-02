@@ -983,6 +983,47 @@ bool CanSurroundingText(absl::string_view bundle_id) {
   MacProcess::LaunchMozcTool("about_dialog");
 }
 
+- (IBAction)aplShiftingKeyCtrlClicked:(id)sender {
+  Config config;
+  if (!mozcClient_->GetConfig(&config)) {
+    LOG(ERROR) << "Cannot obtain the current config";
+    return;
+  }
+  config.mutable_apl_shifting_key_set()->set_ctrl(!config.apl_shifting_key_set().ctrl());
+  if (!mozcClient_->SetConfig(config)) {
+    LOG(ERROR) << "Cannot set config for APL shifting key (ctrl)";
+  }
+}
+
+- (IBAction)aplShiftingKeyOptionClicked:(id)sender {
+  Config config;
+  if (!mozcClient_->GetConfig(&config)) {
+    LOG(ERROR) << "Cannot obtain the current config";
+    return;
+  }
+  config.mutable_apl_shifting_key_set()->set_option(!config.apl_shifting_key_set().option());
+  if (!mozcClient_->SetConfig(config)) {
+    LOG(ERROR) << "Cannot set config for APL shifting key (option)";
+  }
+}
+
+- (BOOL)validateMenuItem:(NSMenuItem *)menuItem {
+  NSInteger tag = [menuItem tag];
+  if (tag == 100 || tag == 101) {
+    Config config;
+    if (!mozcClient_->GetConfig(&config)) {
+      return YES;
+    }
+    const auto &keySet = config.apl_shifting_key_set();
+    if (tag == 100) {
+      [menuItem setState:keySet.ctrl() ? NSControlStateValueOn : NSControlStateValueOff];
+    } else {
+      [menuItem setState:keySet.option() ? NSControlStateValueOn : NSControlStateValueOff];
+    }
+  }
+  return YES;
+}
+
 + (void)setGlobalRendererReceiver:(RendererReceiver *)rendererReceiver {
   gRendererReceiver = rendererReceiver;
 }

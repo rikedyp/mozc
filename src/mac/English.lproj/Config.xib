@@ -42,6 +42,26 @@
                         <action selector="aboutDialogClicked:" target="-2" id="29"/>
                     </connections>
                 </menuItem>
+                <menuItem isSeparatorItem="YES" id="40"/>
+                <menuItem title="APL Shifting Key" id="41">
+                    <modifierMask key="keyEquivalentModifierMask"/>
+                    <menu key="submenu" title="APL Shifting Key" id="42">
+                        <items>
+                            <menuItem title="Ctrl" tag="100" id="43">
+                                <modifierMask key="keyEquivalentModifierMask"/>
+                                <connections>
+                                    <action selector="aplShiftingKeyCtrlClicked:" target="-2" id="44"/>
+                                </connections>
+                            </menuItem>
+                            <menuItem title="Option" tag="101" id="45">
+                                <modifierMask key="keyEquivalentModifierMask"/>
+                                <connections>
+                                    <action selector="aplShiftingKeyOptionClicked:" target="-2" id="46"/>
+                                </connections>
+                            </menuItem>
+                        </items>
+                    </menu>
+                </menuItem>
             </items>
             <point key="canvasLocation" x="90" y="151"/>
         </menu>

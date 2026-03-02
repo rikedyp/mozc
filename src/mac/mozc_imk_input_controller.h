@@ -152,6 +152,18 @@
  */
 - (IBAction)aboutDialogClicked:(id)sender;
 
+/** aplShiftingKeyCtrlClicked: toggles Ctrl as the APL shifting key.
+ *
+ * @param sender The sender of this request (the menu item).
+ */
+- (IBAction)aplShiftingKeyCtrlClicked:(id)sender;
+
+/** aplShiftingKeyOptionClicked: toggles Option as the APL shifting key.
+ *
+ * @param sender The sender of this request (the menu item).
+ */
+- (IBAction)aplShiftingKeyOptionClicked:(id)sender;
+
 /** Sets the ClientInterface to use in the controller.
  *
  * @param newMozcClient The client object to communicate with the Mozc server process.
