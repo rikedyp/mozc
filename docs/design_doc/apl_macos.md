@@ -356,7 +356,7 @@ right after `SetConfig`, so the cache stays current without waiting for the next
 switch apps and back. Verify (via `NSLog`) that the cached config matches what
 was selected. Verify normal typing still works.
 
-### Step M5: Intercept in handleEvent: (behavioral change — APL glyph insertion)
+### Step M5: Intercept in handleEvent: (behavioral change — APL glyph insertion) ✅ DONE
 
 Before `getMozcKeyCodeFromKeyEvent:`, add the intercept block:
 
