@@ -184,6 +184,7 @@ mozc_objc_library(
         "//protocol:renderer_cc_proto",
         "//renderer:renderer_client",
         "//renderer:renderer_interface",
+        "//session:apl_keymap",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/strings",
     ],

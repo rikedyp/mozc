@@ -41,6 +41,7 @@
 #include <functional>
 #include <map>
 #include <memory>
+#include <optional>
 #include <new>
 #include <set>
 #include <string>
@@ -48,6 +49,9 @@
 
 #import "mac/KeyCodeMap.h"
 #import "mac/renderer_receiver.h"
+
+#include "mac/apl_keycode_map.h"
+#include "session/apl_keymap.h"
 
 #include "absl/log/log.h"
 #include "absl/strings/string_view.h"
@@ -181,6 +185,36 @@ bool CanSurroundingText(absl::string_view bundle_id) {
   // because calling attributedSubstringFromRange to it is very heavy.
   return bundle_id != "com.evernote.Evernote";
 }
+// Returns the US QWERTY shifted symbol for a given base character.
+// Letters become uppercase; digits/punctuation become their Shift-layer symbol.
+char ShiftedChar(char c) {
+  if (c >= 'a' && c <= 'z') return c - 32;  // uppercase
+  switch (c) {
+    case '`': return '~';
+    case '1': return '!';
+    case '2': return '@';
+    case '3': return '#';
+    case '4': return '$';
+    case '5': return '%';
+    case '6': return '^';
+    case '7': return '&';
+    case '8': return '*';
+    case '9': return '(';
+    case '0': return ')';
+    case '-': return '_';
+    case '=': return '+';
+    case '[': return '{';
+    case ']': return '}';
+    case '\\': return '|';
+    case ';': return ':';
+    case '\'': return '"';
+    case ',': return '<';
+    case '.': return '>';
+    case '/': return '?';
+    default: return c;
+  }
+}
+
 }  // namespace
 
 @implementation MozcImkInputController
@@ -906,6 +940,52 @@ bool CanSurroundingText(absl::string_view bundle_id) {
     // come to this method but we should ignore them because some
     // applications like PhotoShop is stuck.
     return YES;
+  }
+
+  // APL mode intercept: handle glyph insertion before the Mozc server.
+  if (mode_ == mozc::commands::APL && [event type] == NSEventTypeKeyDown) {
+    NSUInteger flags = [event modifierFlags];
+    bool shiftHeld = (flags & NSEventModifierFlagShift) != 0;
+    bool shiftingModHeld = false;
+    if (aplShiftingKeyCtrl_ && (flags & NSEventModifierFlagControl)) {
+      shiftingModHeld = true;
+    }
+    if (aplShiftingKeyOption_ && (flags & NSEventModifierFlagOption)) {
+      shiftingModHeld = true;
+    }
+
+    unsigned short vkCode = [event keyCode];
+    char baseChar = mozc::mac::AplVirtualKeyToChar(vkCode);
+
+    if (baseChar != '\0' && shiftingModHeld) {
+      // Shifting modifier held: look up APL glyph.
+      std::optional<absl::string_view> glyph;
+      if (shiftHeld) {
+        char shifted = ShiftedChar(baseChar);
+        glyph = mozc::session::GetAplShiftedGlyph(shifted);
+      }
+      if (!glyph.has_value()) {
+        glyph = mozc::session::GetAplGlyph(baseChar);
+      }
+      if (glyph.has_value()) {
+        NSString *glyphStr = [[NSString alloc]
+            initWithBytes:glyph->data()
+                   length:glyph->size()
+                 encoding:NSUTF8StringEncoding];
+        [sender insertText:glyphStr replacementRange:replacementRange_];
+        replacementRange_ = NSMakeRange(NSNotFound, 0);
+        return YES;
+      }
+    } else if (baseChar != '\0' && !shiftingModHeld &&
+               !(flags & NSEventModifierFlagCommand)) {
+      // No shifting modifier: pass through character directly
+      // (bypass Mozc server to suppress autocomplete).
+      NSString *chars = [event characters];
+      if (chars && [chars length] > 0) {
+        [self commitText:[chars UTF8String] client:sender];
+        return YES;
+      }
+    }
   }
 
   // Get the Mozc key event
