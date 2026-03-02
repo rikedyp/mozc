@@ -320,7 +320,7 @@ selecting an item persists across IME restarts. Verify that normal typing
 checkmarks toggle and persist across IME restarts (Mac restart required after
 install to clear stale IME state). Normal typing unaffected.
 
-### Step M2: APL as a first-class input mode
+### Step M2: APL as a first-class input mode ✅ DONE
 
 **Scope change**: M2 was originally a simple `apl_mode_active_` bool. It is now
 a full input mode registration through the Mozc composition mode pipeline,
@@ -330,6 +330,8 @@ etc. See [apl_input_mode.md](apl_input_mode.md) for the detailed design.
 **Test**: Build and install. Verify "APL" appears in the macOS input source
 menu. Select it — type characters (they pass through as ASCII for now). Switch
 back to Hiragana — verify Japanese input still works.
+
+**Result**: Implemented and verified. Selecting APL (Mozc) from the macOS keyboard installer puts the option in the taskbar menu. Typing with APL mode active passes through latin characters. The autocomplete menu still appears, which we might want to remove or create an option depending on whether we are doing keyword-based input. This will be addressed at a later stage.
 
 ### Step M3: Virtual key → char table (pure data — no behavioral change)
 
