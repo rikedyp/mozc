@@ -1024,17 +1024,10 @@ bool CanSurroundingText(absl::string_view bundle_id) {
 
 - (BOOL)validateMenuItem:(NSMenuItem *)menuItem {
   NSInteger tag = [menuItem tag];
-  if (tag == 100 || tag == 101) {
-    Config config;
-    if (!mozcClient_->GetConfig(&config)) {
-      return YES;
-    }
-    const auto &keySet = config.apl_shifting_key_set();
-    if (tag == 100) {
-      [menuItem setState:keySet.ctrl() ? NSControlStateValueOn : NSControlStateValueOff];
-    } else {
-      [menuItem setState:keySet.option() ? NSControlStateValueOn : NSControlStateValueOff];
-    }
+  if (tag == 100) {
+    [menuItem setState:aplShiftingKeyCtrl_ ? NSControlStateValueOn : NSControlStateValueOff];
+  } else if (tag == 101) {
+    [menuItem setState:aplShiftingKeyOption_ ? NSControlStateValueOn : NSControlStateValueOff];
   }
   return YES;
 }
