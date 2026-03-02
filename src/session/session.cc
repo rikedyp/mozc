@@ -100,6 +100,9 @@ void ApplyCompositionMode(const commands::CompositionMode mode,
     case commands::HALF_ASCII:
       SwitchInputMode(transliteration::HALF_ASCII, composer);
       break;
+    case commands::APL:
+      SwitchInputMode(transliteration::APL, composer);
+      break;
     default:
       LOG(DFATAL) << "ime on with invalid mode";
   }
@@ -192,6 +195,9 @@ commands::CompositionMode ToCompositionMode(
       break;
     case transliteration::HALF_ASCII:
       mode = commands::HALF_ASCII;
+      break;
+    case transliteration::APL:
+      mode = commands::APL;
       break;
     default:
       LOG(ERROR) << "Unknown input mode: " << type;
@@ -312,6 +318,9 @@ bool Session::SendCommand(commands::Command* command) {
         break;
       case commands::HALF_KATAKANA:
         result = CompositionModeHalfKatakana(command);
+        break;
+      case commands::APL:
+        result = CompositionModeApl(command);
         break;
       default:
         LOG(ERROR) << "Unknown mode: " << session_command.composition_mode();
@@ -605,6 +614,8 @@ bool Session::SendKeyDirectInputState(commands::Command* command) {
       return CompositionModeFullASCII(command);
     case keymap::DirectInputState::COMPOSITION_MODE_HALF_ALPHANUMERIC:
       return CompositionModeHalfASCII(command);
+    case keymap::DirectInputState::COMPOSITION_MODE_APL:
+      return CompositionModeApl(command);
     case keymap::DirectInputState::NONE:
       return EchoBackAndClearUndoContext(command);
     case keymap::DirectInputState::RECONVERT:
@@ -668,6 +679,8 @@ bool Session::SendKeyPrecompositionState(commands::Command* command) {
       return CompositionModeFullASCII(command);
     case keymap::PrecompositionState::COMPOSITION_MODE_HALF_ALPHANUMERIC:
       return CompositionModeHalfASCII(command);
+    case keymap::PrecompositionState::COMPOSITION_MODE_APL:
+      return CompositionModeApl(command);
     case keymap::PrecompositionState::COMPOSITION_MODE_SWITCH_KANA_TYPE:
       return CompositionModeSwitchKanaType(command);
 
@@ -838,6 +851,9 @@ bool Session::SendKeyCompositionState(commands::Command* command) {
     case keymap::CompositionState::COMPOSITION_MODE_HALF_ALPHANUMERIC:
       return CompositionModeHalfASCII(command);
 
+    case keymap::CompositionState::COMPOSITION_MODE_APL:
+      return CompositionModeApl(command);
+
     case keymap::CompositionState::NONE:
       return DoNothing(command);
   }
@@ -982,6 +998,9 @@ bool Session::SendKeyConversionState(commands::Command* command) {
 
     case keymap::ConversionState::COMPOSITION_MODE_HALF_ALPHANUMERIC:
       return CompositionModeHalfASCII(command);
+
+    case keymap::ConversionState::COMPOSITION_MODE_APL:
+      return CompositionModeApl(command);
 
     case keymap::ConversionState::REPORT_BUG:
       return ReportBug(command);
@@ -2154,6 +2173,14 @@ bool Session::CompositionModeHalfASCII(commands::Command* command) {
   EnsureIMEIsOn();
   // The temporary mode should not be overridden.
   SwitchInputMode(transliteration::HALF_ASCII, context_->mutable_composer());
+  OutputFromState(command);
+  return true;
+}
+
+bool Session::CompositionModeApl(commands::Command* command) {
+  command->mutable_output()->set_consumed(true);
+  EnsureIMEIsOn();
+  SwitchInputMode(transliteration::APL, context_->mutable_composer());
   OutputFromState(command);
   return true;
 }

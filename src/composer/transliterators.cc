@@ -259,6 +259,26 @@ class FullAsciiTransliterator : public internal::TransliteratorInterface {
   }
 };
 
+class AplTransliterator : public internal::TransliteratorInterface {
+ public:
+  ~AplTransliterator() override = default;
+
+  std::string Transliterate(const absl::string_view raw,
+                            const absl::string_view converted) const override {
+    // Passthrough stub: returns raw keystrokes unchanged.
+    // M3 will replace this with APL character table lookup.
+    return std::string(raw.empty() ? converted : raw);
+  }
+
+  bool Split(size_t position, const absl::string_view raw,
+             const absl::string_view converted, std::string* raw_lhs,
+             std::string* raw_rhs, std::string* converted_lhs,
+             std::string* converted_rhs) const override {
+    return Transliterators::SplitRaw(position, raw, converted, raw_lhs, raw_rhs,
+                                     converted_lhs, converted_rhs);
+  }
+};
+
 }  // namespace
 
 // static
@@ -281,6 +301,8 @@ const internal::TransliteratorInterface* Transliterators::GetTransliterator(
       return Singleton<FullAsciiTransliterator>::get();
     case HALF_ASCII:
       return Singleton<HalfAsciiTransliterator>::get();
+    case APL:
+      return Singleton<AplTransliterator>::get();
     default:
       LOG(ERROR) << "Unexpected transliterator: " << transliterator;
       // As fallback.

@@ -90,6 +90,8 @@ class Transliterators {
     FULL_ASCII,
     // Returns half ascii.
     HALF_ASCII,
+    // Returns APL characters.
+    APL,
     // Special transliterator.
     // Use locally assigned transliterator.
     // Many methods don't accept this value.

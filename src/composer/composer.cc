@@ -96,6 +96,9 @@ Transliterators::Transliterator GetTransliterator(
     case transliteration::HIRAGANA:
       return Transliterators::HIRAGANA;
 
+    case transliteration::APL:
+      return Transliterators::APL;
+
     default:
       LOG(ERROR) << "Unknown TransliterationType: " << comp_mode;
       return Transliterators::CONVERSION_STRING;
