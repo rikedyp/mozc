@@ -193,6 +193,8 @@ transliteration::TransliterationType GetTransliterationTypeFromCompositionMode(
       return transliteration::FULL_ASCII;
     case commands::HALF_KATAKANA:
       return transliteration::HALF_KATAKANA;
+    case commands::APL:
+      return transliteration::APL;
     default:
       // commands::DIRECT or invalid mode.
       LOG(ERROR) << "Invalid CompositionMode: " << mode;
