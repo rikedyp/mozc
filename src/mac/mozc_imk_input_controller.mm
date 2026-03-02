@@ -232,6 +232,8 @@ bool CanSurroundingText(absl::string_view bundle_id) {
   mozcClient_ = mozc::client::ClientFactory::NewClient();
   lastKeyDownTime_ = 0;
   lastKeyCode_ = 0;
+  aplShiftingKeyCtrl_ = false;
+  aplShiftingKeyOption_ = false;
 
   // We don't check the return value of NSBundle because it fails during tests.
   [[NSBundle mainBundle] loadNibNamed:@"Config" owner:self topLevelObjects:nil];
@@ -373,6 +375,11 @@ bool CanSurroundingText(absl::string_view bundle_id) {
     // depending on which type of keyboard is actually connected.
     [[self client] overrideKeyboardWithKeyboardNamed:@"com.apple.keylayout.US"];
   }
+
+  // Cache APL shifting key config to avoid per-keystroke IPC.
+  const auto &aplKeySet = config.apl_shifting_key_set();
+  aplShiftingKeyCtrl_ = aplKeySet.ctrl();
+  aplShiftingKeyOption_ = aplKeySet.option();
 }
 
 - (void)setupClientBundle:(id)sender {
@@ -999,6 +1006,7 @@ bool CanSurroundingText(absl::string_view bundle_id) {
   if (!mozcClient_->SetConfig(config)) {
     LOG(ERROR) << "Cannot set config for APL shifting key (ctrl)";
   }
+  aplShiftingKeyCtrl_ = config.apl_shifting_key_set().ctrl();
 }
 
 - (IBAction)aplShiftingKeyOptionClicked:(id)sender {
@@ -1011,6 +1019,7 @@ bool CanSurroundingText(absl::string_view bundle_id) {
   if (!mozcClient_->SetConfig(config)) {
     LOG(ERROR) << "Cannot set config for APL shifting key (option)";
   }
+  aplShiftingKeyOption_ = config.apl_shifting_key_set().option();
 }
 
 - (BOOL)validateMenuItem:(NSMenuItem *)menuItem {

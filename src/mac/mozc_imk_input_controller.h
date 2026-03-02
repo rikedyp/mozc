@@ -102,6 +102,10 @@
 
   /** |menu_| is the NSMenu to be shown in the pulldown menu-list of the IME. */
   IBOutlet NSMenu *menu_;
+
+  /** Cached APL shifting key config (refreshed in handleConfig). */
+  bool aplShiftingKeyCtrl_;
+  bool aplShiftingKeyOption_;
 }
 
 /** These are externally accessible to achieve tests. */
