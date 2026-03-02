@@ -303,7 +303,7 @@ immediately identifiable. The order below is chosen so that UI-only and
 data-only changes come first (zero risk of breaking input), with the behavioral
 `handleEvent:` intercept arriving last.
 
-### Step M1: NSMenu shifting key submenu (UI only — no behavioral change)
+### Step M1: NSMenu shifting key submenu (UI only — no behavioral change) ✅ DONE
 
 Add an "APL Shifting Key" submenu to the existing `menu_` with items "Ctrl",
 "Option" (and optionally "Caps Lock"). Each item is checkmark-toggled via an
@@ -315,6 +315,10 @@ controller's cached shifting key state.
 the "APL Shifting Key" submenu appears with the expected items. Verify that
 selecting an item persists across IME restarts. Verify that normal typing
 (alphanumeric and hiragana) still works — this step must not affect input at all.
+
+**Result**: Implemented and verified. Submenu appears with Ctrl and Option items;
+checkmarks toggle and persist across IME restarts (Mac restart required after
+install to clear stale IME state). Normal typing unaffected.
 
 ### Step M2: APL mode flag in macOS controller
 
