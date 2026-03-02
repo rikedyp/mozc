@@ -997,37 +997,46 @@ bool CanSurroundingText(absl::string_view bundle_id) {
 }
 
 - (IBAction)aplShiftingKeyCtrlClicked:(id)sender {
+  NSLog(@"APL: aplShiftingKeyCtrlClicked fired");
   Config config;
   if (!mozcClient_->GetConfig(&config)) {
-    LOG(ERROR) << "Cannot obtain the current config";
+    NSLog(@"APL: GetConfig FAILED in ctrlClicked");
     return;
   }
+  NSLog(@"APL: ctrl was %d, toggling", config.apl_shifting_key_set().ctrl());
   config.mutable_apl_shifting_key_set()->set_ctrl(!config.apl_shifting_key_set().ctrl());
   if (!mozcClient_->SetConfig(config)) {
-    LOG(ERROR) << "Cannot set config for APL shifting key (ctrl)";
+    NSLog(@"APL: SetConfig FAILED in ctrlClicked");
   }
   aplShiftingKeyCtrl_ = config.apl_shifting_key_set().ctrl();
+  NSLog(@"APL: ctrl now cached as %d", aplShiftingKeyCtrl_);
 }
 
 - (IBAction)aplShiftingKeyOptionClicked:(id)sender {
+  NSLog(@"APL: aplShiftingKeyOptionClicked fired");
   Config config;
   if (!mozcClient_->GetConfig(&config)) {
-    LOG(ERROR) << "Cannot obtain the current config";
+    NSLog(@"APL: GetConfig FAILED in optionClicked");
     return;
   }
+  NSLog(@"APL: option was %d, toggling", config.apl_shifting_key_set().option());
   config.mutable_apl_shifting_key_set()->set_option(!config.apl_shifting_key_set().option());
   if (!mozcClient_->SetConfig(config)) {
-    LOG(ERROR) << "Cannot set config for APL shifting key (option)";
+    NSLog(@"APL: SetConfig FAILED in optionClicked");
   }
   aplShiftingKeyOption_ = config.apl_shifting_key_set().option();
+  NSLog(@"APL: option now cached as %d", aplShiftingKeyOption_);
 }
 
 - (BOOL)validateMenuItem:(NSMenuItem *)menuItem {
   NSInteger tag = [menuItem tag];
+  NSLog(@"APL: validateMenuItem tag=%ld title=%@", (long)tag, [menuItem title]);
   if (tag == 100) {
     [menuItem setState:aplShiftingKeyCtrl_ ? NSControlStateValueOn : NSControlStateValueOff];
+    NSLog(@"APL: setting ctrl checkmark to %d", aplShiftingKeyCtrl_);
   } else if (tag == 101) {
     [menuItem setState:aplShiftingKeyOption_ ? NSControlStateValueOn : NSControlStateValueOff];
+    NSLog(@"APL: setting option checkmark to %d", aplShiftingKeyOption_);
   }
   return YES;
 }
