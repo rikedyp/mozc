@@ -608,4 +608,28 @@ activated (e.g., server crashed or was not started).
 *Mitigation*: `GetConfig`/`SetConfig` failures are non-fatal. The menu
 shows unchecked items as default. The broker auto-restarts the server.
 
+**Risk**: Caps Lock is a toggle key on Windows — pressing it changes
+persistent LED state. When used as an APL shifting key, the glyph
+insertion phase will need to handle this.
+
+*Design note for glyph insertion phase*: On Windows, the APL key intercept
+must:
+
+1. Read toggle state via `GetKeyState(VK_CAPITAL) & 0x0001`, not the
+   `IsPressed(VK_CAPITAL)` check that the existing keyevent handler uses
+   (line 431 of `keyevent_handler.cc`). Caps Lock as a shifting key means
+   "when the LED is on, character keys produce APL glyphs."
+2. Eat `VK_CAPITAL` keydown/keyup when in APL mode to prevent the system
+   from toggling the LED unexpectedly, or alternatively let the LED serve
+   as a visual indicator of APL shift state.
+3. The intercept must happen before `TipKeyeventHandler` processes the key,
+   since the existing handler at `keyevent_handler.cc:460` would otherwise
+   forward `VK_CAPITAL` to the Mozc server as `KeyEvent::CAPS`.
+
+This is out of scope for the current POC (no key interception), but the
+menu and config wiring in W3/W4 must not preclude this approach. Note:
+Caps Lock was abandoned as a shifting key option on the macOS branch;
+however it is actively used on Windows via Kanata and must work in this
+POC.
+
 
