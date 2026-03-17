@@ -363,20 +363,34 @@ that's expected and will be replaced in W3).
 
 Replace the Japanese input mode menu with the APL shifting key menu.
 
+**Why `TipLangBarMenuButton`, not `TipLangBarToggleButton`**:
+The existing `TipLangBarToggleButton` hard-codes radio-select semantics — a
+single `menu_selected_` index, `TF_LBMENUF_RADIOCHECKED` flags, and
+`SelectMenuItem` that clears all other items when one is selected. Converting
+it to multi-select would require gutting its selection model.
+
+`TipLangBarMenuButton` has no selection model at all. Its `InitMenu` reads
+`flags_` directly from each `TipLangBarMenuData` entry, and its `OnMenuSelect`
+just delegates to the callback. This makes multi-select trivial: set or clear
+`TF_LBMENUF_CHECKED` on the item's `flags_` field, then call `OnUpdate` to
+refresh the menu.
+
 **Files changed**:
 - `src/win32/tip/tip_lang_bar_callback.h` — add `kAplShiftingKeyLeftCtrl`
   through `kAplShiftingKeyCapsLock` to `ItemId` enum (IDs 50-54)
 - `src/win32/tip/tip_lang_bar.h` — replace `input_button_menu_` and
-  `input_mode_button_for_win8_` with `apl_shifting_button_`
+  `input_mode_button_for_win8_` (both `TipLangBarToggleButton`) with a single
+  `apl_shifting_button_` of type `TipLangBarMenuButton`
 - `src/win32/tip/tip_lang_bar.cc`:
-  - Replace input mode menu item arrays with APL shifting key items
-  - Use `kTipLangBarItemTypeChecked` instead of
-    `kTipLangBarItemTypeRadioChecked`
+  - Replace input mode menu item arrays with APL shifting key items, using
+    `kTipLangBarItemTypeDefault` (unchecked initially)
   - Remove Japanese composition mode items (Direct, Hiragana, etc.)
-  - `UpdateMenu()` sets checkmark state per item instead of radio selection
+  - `UpdateMenu()` sets `TF_LBMENUF_CHECKED` on each item's `flags_` field
+    based on the current shifting key state, then calls `OnUpdate`
 - `src/win32/tip/tip_text_service.cc`:
-  - `OnMenuSelect`: add cases for `kAplShiftingKeyLeftCtrl` through
-    `kAplShiftingKeyCapsLock` (stub: log selection for now)
+  - `OnMenuSelect` callback: for APL item IDs, toggle the item's
+    `TF_LBMENUF_CHECKED` flag directly on its `TipLangBarMenuData::flags_`
+    (stub: no config persistence yet, just visual toggle)
   - Remove or stub out Japanese input mode switch logic in `OnMenuSelect`
   - `UpdateLangbar()`: adapted for checkmark-based menu
 
@@ -396,10 +410,21 @@ APL Shifting Key ▸
   ☐ Caps Lock
 ```
 
+**Checkmark toggle flow** (W3 is UI-only; config persistence is added in W4):
+```
+User clicks "Right Ctrl"
+  → TipLangBarMenuButton::OnMenuSelect(index)
+    → callback->OnMenuSelect(kAplShiftingKeyRightCtrl)
+      → toggle TF_LBMENUF_CHECKED on that item's TipLangBarMenuData::flags_
+      → apl_shifting_button_->OnUpdate(TF_LBI_STATUS)
+  → next InitMenu call reads updated flags_, shows checkmark
+```
+
 **Test**: Install, switch to Mozc APL. Click the system tray icon. The "APL
 Shifting Key" menu appears with five items. Clicking items toggles checkmarks
-(visual only for now — no config persistence yet). The old Japanese input mode
-menu (Direct / Hiragana / etc.) no longer appears.
+(visual only for now — no config persistence yet). Multiple items can be
+checked simultaneously. The old Japanese input mode menu (Direct / Hiragana /
+etc.) no longer appears.
 
 ### Step W4: Config wiring (shifting key persistence)
 
@@ -559,13 +584,4 @@ activated (e.g., server crashed or was not started).
 *Mitigation*: `GetConfig`/`SetConfig` failures are non-fatal. The menu
 shows unchecked items as default. The broker auto-restarts the server.
 
-**Risk**: The `TipLangBarToggleButton` class uses radio-button semantics
-(single selection via `menu_selected_` index). Converting to multi-select
-checkmarks may require changes to `SelectMenuItem` and `InitMenu`.
 
-*Mitigation*: The `TF_LBMENUF_CHECKED` flag is already supported by the
-class. The main change is removing the mutual exclusion logic in
-`SelectMenuItem` and storing per-item checked state instead of a single
-selected index. If this proves too invasive, a simpler approach is to bypass
-`SelectMenuItem` entirely and manage checkmark state directly in `InitMenu`
-by reading the cached config.

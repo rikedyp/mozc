@@ -1,5 +1,3 @@
-TipLangBarToggleButton::SelectMenuItem hard-codes radio semantics with a single menu_selected_ index — Converting to multi-select checkmarks isn't a flag change; it requires replacing the entire selection model (TF_LBMENUF_RADIOCHECKED → TF_LBMENUF_CHECKED, single index → per-item bool array, rewriting OnMenuSelect), making W3's "visual only toggle" untestable without already doing that rewrite.
-
 Reusing the same Profile GUID for English blocks future dual-profile (Japanese + APL) — When you later want both, you'll need a new GUID for the APL profile, and users who installed the POC will have orphaned English-language registry entries under the old GUID that conflict with re-registering it as Japanese.
 
 No CompositionMode::APL on Windows — macOS added APL = 6 to the shared proto and wired it through session/keymap/transliteration; this POC sidesteps that entirely by replacing Japanese, so the glyph insertion phase will need to retrofit composition mode integration that should have been designed in from the start.
