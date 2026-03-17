@@ -118,14 +118,6 @@ This means:
   mode toggle)
 - Japanese Mozc functionality is not available on this branch (by design)
 
-### Future: dual-profile architecture
-
-When Japanese input is needed alongside APL, a second profile will be added
-under the same text service GUID with a new profile GUID and
-`LANG_JAPANESE`. The TIP will query `GetActiveLanguageProfile()` in
-`ActivateEx()` to determine which language bar to show. This complexity is
-deferred.
-
 ### Key files to modify
 
 | File | Change |
