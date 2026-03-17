@@ -1,5 +1,3 @@
-ConfigSnapshot is a one-shot static cache, not a live refresh — The plan says "re-read ConfigSnapshot after SetConfig" but ConfigSnapshot::Get() reads from shared memory once at startup; there's no Refresh() method, so the "same approach as macOS" claim is wrong and W4's config write path won't actually update the cached state without new plumbing.
-
 TipLangBarToggleButton::SelectMenuItem hard-codes radio semantics with a single menu_selected_ index — Converting to multi-select checkmarks isn't a flag change; it requires replacing the entire selection model (TF_LBMENUF_RADIOCHECKED → TF_LBMENUF_CHECKED, single index → per-item bool array, rewriting OnMenuSelect), making W3's "visual only toggle" untestable without already doing that rewrite.
 
 Reusing the same Profile GUID for English blocks future dual-profile (Japanese + APL) — When you later want both, you'll need a new GUID for the APL profile, and users who installed the POC will have orphaned English-language registry entries under the old GUID that conflict with re-registering it as Japanese.

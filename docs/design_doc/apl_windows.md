@@ -411,8 +411,8 @@ server.
 - `src/win32/base/config_snapshot.cc` — populate from
   `config.apl_shifting_key_set()`
 - `src/win32/tip/tip_text_service.cc` — `OnMenuSelect` for APL items: read
-  config via client → toggle field → write config → refresh cache → update
-  menu checkmarks
+  config via client → toggle field → write config → update `Info` fields
+  directly → update menu checkmarks
 - `src/win32/tip/tip_lang_bar.cc` — `UpdateMenu` reads cached config to set
   checkmark state on each item
 
@@ -433,9 +433,15 @@ User clicks menu item
     → client->GetConfig(&config)
     → config.mutable_apl_shifting_key_set()->set_right_ctrl(!current)
     → client->SetConfig(config)
-    → refresh ConfigSnapshot cache
-    → TipLangBar::UpdateMenu() refreshes checkmarks
+    → update Info.apl_shifting_right_ctrl directly (no second IPC round-trip)
+    → TipLangBar::UpdateMenu() refreshes checkmarks from Info fields
 ```
+
+Note: `ConfigSnapshot::Get()` is a one-shot static cache populated at
+startup — it has no refresh mechanism. The write path must update the
+`Info` fields directly after `SetConfig` rather than re-reading the
+snapshot. This mirrors the macOS approach where `handleConfig` updates
+ivars (`aplShiftingKeyCtrl_` etc.) immediately after `SetConfig`.
 
 **Test**: Install, switch to Mozc APL. Toggle "Right Ctrl" in the menu. Close
 and reopen the menu — checkmark persists. Restart the IME (switch away and
@@ -536,12 +542,16 @@ or irrelevant. `EnsureKanaLockUnlocked()` is harmless on an English system.
 The key event handler will still function — it just won't receive Japanese
 composition requests. Dead code can be cleaned up later.
 
-**Risk**: `ConfigSnapshot` is loaded once and cached. Menu toggles may not
-refresh the cache immediately.
+**Risk**: `ConfigSnapshot::Get()` is a one-shot static cache with no
+refresh mechanism. After a menu toggle writes via `SetConfig`, the
+snapshot still holds stale values.
 
-*Mitigation*: After `SetConfig`, explicitly re-read `ConfigSnapshot` or
-update the cached fields directly (same approach as macOS `handleConfig`
-refresh).
+*Mitigation*: The TIP maintains a mutable copy of the APL shifting key
+fields in `ConfigSnapshot::Info`. After `SetConfig`, update these fields
+directly — the new value is already known (it was just toggled), so no
+second IPC round-trip is needed. `ConfigSnapshot::Get()` is used only for
+the initial read at `ActivateEx` time. This matches the macOS pattern
+where ivars are updated immediately after `SetConfig`.
 
 **Risk**: The Mozc server may not be running when the APL profile is
 activated (e.g., server crashed or was not started).
