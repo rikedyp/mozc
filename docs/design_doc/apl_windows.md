@@ -300,7 +300,7 @@ code exists yet.
 Following the macOS experience, we build incrementally. Each step is
 independently testable. The risk profile is:
 
-- W1 is a proto change — testable via build success
+- W1 is proto changes (config + CompositionMode) — testable via build success
 - W2 is a registration change — testable via install + Settings UI
 - W3 is language bar menu — visible in system tray, no behavioral change
 - W4 is config wiring — menu toggles persist, no key handling changes
@@ -309,9 +309,10 @@ independently testable. The risk profile is:
 No key interception or glyph insertion in this POC. The behavioral changes
 arrive in a separate phase after the foundation is validated.
 
-### Step W1: Proto changes (shared, no behavioral change)
+### Step W1: Proto changes (no behavioral change)
 
-Add the `AplShiftingKeySet` message and field 122 to `config.proto`:
+**1a. Config proto** — Add the `AplShiftingKeySet` message and field 122 to
+`config.proto`:
 
 ```proto
 message AplShiftingKeySet {
@@ -331,11 +332,34 @@ On `Config`:
 optional AplShiftingKeySet apl_shifting_key_set = 122;
 ```
 
+**1b. CompositionMode** — Repurpose the Japanese-only modes for APL. In
+`commands.proto`, replace the unused Japanese modes:
+
+```proto
+enum CompositionMode {
+  DIRECT = 0;
+  HIRAGANA = 1;       // unused in APL POC, kept for value stability
+  APL = 2;            // was FULL_KATAKANA
+  HALF_ASCII = 3;
+  FULL_ASCII = 4;
+  // HALF_KATAKANA (5) removed
+  NUM_OF_COMPOSITIONS = 6;  // unchanged
+}
+```
+
+This avoids adding `APL = 6` (as the macOS branch did) and the cascade of
+array-size changes that would follow. Safe for a throwaway POC that will
+never merge with the macOS branch. `HIRAGANA` and the ASCII modes are kept
+to avoid breaking code that references them by value — they just become
+dead paths that the APL TIP never enters.
+
 **Files changed**:
 - `src/protocol/config.proto`
+- `src/protocol/commands.proto`
 
 **Test**: Build succeeds. Proto generates correctly. Existing Mozc behavior
-unaffected (field is optional with no default — absent by default).
+unaffected (config field is optional, CompositionMode values 0/1/3/4 are
+unchanged).
 
 ### Step W2: English registration (replace Japanese with APL)
 

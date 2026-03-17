@@ -1,7 +1,3 @@
-Reusing the same Profile GUID for English blocks future dual-profile (Japanese + APL) — When you later want both, you'll need a new GUID for the APL profile, and users who installed the POC will have orphaned English-language registry entries under the old GUID that conflict with re-registering it as Japanese.
-
-No CompositionMode::APL on Windows — macOS added APL = 6 to the shared proto and wired it through session/keymap/transliteration; this POC sidesteps that entirely by replacing Japanese, so the glyph insertion phase will need to retrofit composition mode integration that should have been designed in from the start.
-
 W3 claims independent testability ("clicking toggles checkmarks, visual only") but the existing OnMenuSelect enforces mutual exclusion — You can't demo checkmark toggling without first gutting the radio logic, so W3 and the selection-model rewrite are actually one atomic step.
 
 Proto caps_lock field 3 is shared cross-platform but the semantics differ — macOS treats Caps Lock as a modifier (must intercept before KeyCodeMap.mm strips it), Windows treats it as a toggle key (must eat VK_CAPITAL to suppress LED); sharing the field implies behavioral equivalence that doesn't exist.
