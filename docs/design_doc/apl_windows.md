@@ -226,24 +226,44 @@ chosen on the macOS branch. This keeps the two branches mergeable.
 
 ### Config access on Windows
 
-The existing `ConfigSnapshot` class (`src/win32/base/config_snapshot.cc`)
-caches select config fields for the TIP. For the POC, we extend it to include
-the `AplShiftingKeySet`:
+Config access on Windows uses two tiers:
+
+1. **Startup load** — `ConfigSnapshot::Get()` (`src/win32/base/config_snapshot.cc`)
+   reads config from disk once, when `TipPrivateContext` is created. This is a
+   `static const` cache with no refresh mechanism — it exists for existing Mozc
+   settings (kana input, mode indicator, etc.) that rarely change mid-session.
+
+2. **Live runtime state** — `InputBehavior` (`src/win32/base/input_state.h`) is
+   a mutable, per-context struct that `TipPrivateContext` owns. At startup,
+   `EnsureInitialized()` copies snapshot values into it. The key event handler
+   reads `InputBehavior` on every keystroke via
+   `private_context->input_behavior()` — it never reads `ConfigSnapshot`
+   directly.
+
+For the APL shifting keys, we extend `InputBehavior` (not `ConfigSnapshot::Info`):
 
 ```cpp
-struct ConfigSnapshot::Info {
+struct InputBehavior {
   // ... existing fields ...
-  bool apl_shifting_left_ctrl;
-  bool apl_shifting_right_ctrl;
-  bool apl_shifting_left_alt;
-  bool apl_shifting_right_alt;
-  bool apl_shifting_caps_lock;
+  bool apl_shifting_left_ctrl = false;
+  bool apl_shifting_right_ctrl = false;
+  bool apl_shifting_left_alt = false;
+  bool apl_shifting_right_alt = false;
+  bool apl_shifting_caps_lock = false;
 };
 ```
 
+We also extend `ConfigSnapshot::Info` and `ConfigSnapshot::Get()` so that the
+initial load from disk populates these fields, which `EnsureInitialized()` then
+copies into `InputBehavior`.
+
 For writing config (when the user toggles a menu item), the TIP uses the Mozc
 client interface directly — `TipPrivateContext::GetClient()` →
-`GetConfig()` / `SetConfig()`, same pattern as the macOS implementation.
+`GetConfig()` / `SetConfig()`, same pattern as the macOS implementation. After
+`SetConfig` persists the change to disk (via the server), the menu handler also
+updates `InputBehavior` directly — the new value is already known (it was just
+toggled), so no IPC round-trip or cache refresh is needed. This gives immediate
+effect for the key intercept while ensuring persistence across restarts.
 
 ---
 
@@ -282,7 +302,7 @@ Differences from macOS Implementation
 | Alt/Option bare-press | No side effect on macOS | Activates menu bar on Windows |
 | Mode registration | `Info.plist` `ComponentInputModeDict` | `AddLanguageProfile` with language ID |
 | Language bar / menu | NSMenu with `IBAction` checkmark items | `ITfLangBarItemButton` with `TF_LBMENUF_CHECKED` |
-| Config access | `mozcClient_->GetConfig()` (direct) | `ConfigSnapshot` cache + client `GetConfig`/`SetConfig` |
+| Config access | `mozcClient_->GetConfig()` (direct) | `InputBehavior` (live) + `ConfigSnapshot` (initial load) + client `GetConfig`/`SetConfig` (persistence) |
 | Installer | macOS pkg (not covered) | WiX MSI with custom actions |
 
 ---
@@ -463,41 +483,48 @@ Wire the menu toggles to read/write `config.proto` field 122 via the Mozc
 server.
 
 **Files changed**:
+- `src/win32/base/input_state.h` — add APL shifting key fields to
+  `InputBehavior`
 - `src/win32/base/config_snapshot.h` — add APL shifting key fields to `Info`
+  (for initial load only)
 - `src/win32/base/config_snapshot.cc` — populate from
   `config.apl_shifting_key_set()`
+- `src/win32/tip/tip_private_context.cc` — `EnsureInitialized()` copies
+  snapshot APL fields into `InputBehavior`
 - `src/win32/tip/tip_text_service.cc` — `OnMenuSelect` for APL items: read
-  config via client → toggle field → write config → update `Info` fields
+  config via client → toggle field → write config → update `InputBehavior`
   directly → update menu checkmarks
-- `src/win32/tip/tip_lang_bar.cc` — `UpdateMenu` reads cached config to set
+- `src/win32/tip/tip_lang_bar.cc` — `UpdateMenu` reads `InputBehavior` to set
   checkmark state on each item
 
-**Config read path**:
+**Config read path** (startup):
 ```
-TipTextService::ActivateEx()
-  → ConfigSnapshot::Get()
-    → client->GetConfig()
-      → config.apl_shifting_key_set().left_ctrl() etc.
-    → populate Info.apl_shifting_* fields
-  → TipLangBar::UpdateMenu() sets checkmark flags
+TipPrivateContext::EnsureInitialized()
+  → ConfigSnapshot::Get(&snapshot)         // one-shot read from disk
+    → config.apl_shifting_key_set().left_ctrl() etc.
+    → populate snapshot.apl_shifting_* fields
+  → behavior->apl_shifting_left_ctrl = snapshot.apl_shifting_left_ctrl  // copy into live state
+  → ... (same for all five fields)
+  → TipLangBar::UpdateMenu() sets checkmark flags from InputBehavior
 ```
 
-**Config write path**:
+**Config write path** (menu toggle):
 ```
 User clicks menu item
   → OnMenuSelect(kAplShiftingKeyRightCtrl)
     → client->GetConfig(&config)
     → config.mutable_apl_shifting_key_set()->set_right_ctrl(!current)
-    → client->SetConfig(config)
-    → update Info.apl_shifting_right_ctrl directly (no second IPC round-trip)
-    → TipLangBar::UpdateMenu() refreshes checkmarks from Info fields
+    → client->SetConfig(config)                              // persist to disk via server
+    → private_context->mutable_input_behavior()
+        ->apl_shifting_right_ctrl = !current                 // immediate update to live state
+    → TipLangBar::UpdateMenu() refreshes checkmarks from InputBehavior
 ```
 
-Note: `ConfigSnapshot::Get()` is a one-shot static cache populated at
-startup — it has no refresh mechanism. The write path must update the
-`Info` fields directly after `SetConfig` rather than re-reading the
-snapshot. This mirrors the macOS approach where `handleConfig` updates
-ivars (`aplShiftingKeyCtrl_` etc.) immediately after `SetConfig`.
+Note: `ConfigSnapshot::Get()` is only used for the initial load — it is a
+`static const` cache with no refresh mechanism. All runtime reads go through
+`InputBehavior`, which the menu handler updates directly after `SetConfig`.
+This mirrors the macOS approach where `handleConfig` updates ivars
+(`aplShiftingKeyCtrl_` etc.) immediately after `SetConfig`.
 
 **Test**: Install, switch to Mozc APL. Toggle "Right Ctrl" in the menu. Close
 and reopen the menu — checkmark persists. Restart the IME (switch away and
@@ -553,15 +580,17 @@ OnKeyDown(vk, lParam):
 The `GetAplGlyph` / `GetAplShiftedGlyph` functions are cherry-picked from
 `src/session/apl_keymap.h` (same as macOS M5).
 
-**Modifier detection** — Check which shifting key is held:
+**Modifier detection** — Check which shifting key is held, reading from the
+live `InputBehavior` (available via `private_context->input_behavior()` in the
+key event handler):
 
 ```cpp
-bool IsShiftingKeyHeld(const ConfigSnapshot::Info& info) {
-  if (info.apl_shifting_left_ctrl  && (GetKeyState(VK_LCONTROL) & 0x8000)) return true;
-  if (info.apl_shifting_right_ctrl && (GetKeyState(VK_RCONTROL) & 0x8000)) return true;
-  if (info.apl_shifting_left_alt   && (GetKeyState(VK_LMENU)   & 0x8000)) return true;
-  if (info.apl_shifting_right_alt  && (GetKeyState(VK_RMENU)   & 0x8000)) return true;
-  if (info.apl_shifting_caps_lock  && (GetKeyState(VK_CAPITAL)  & 0x0001)) return true;
+bool IsShiftingKeyHeld(const InputBehavior& behavior) {
+  if (behavior.apl_shifting_left_ctrl  && (GetKeyState(VK_LCONTROL) & 0x8000)) return true;
+  if (behavior.apl_shifting_right_ctrl && (GetKeyState(VK_RCONTROL) & 0x8000)) return true;
+  if (behavior.apl_shifting_left_alt   && (GetKeyState(VK_LMENU)   & 0x8000)) return true;
+  if (behavior.apl_shifting_right_alt  && (GetKeyState(VK_RMENU)   & 0x8000)) return true;
+  if (behavior.apl_shifting_caps_lock  && (GetKeyState(VK_CAPITAL)  & 0x0001)) return true;
   return false;
 }
 ```
@@ -698,8 +727,10 @@ Key Files (Windows)
 | `src/win32/tip/tip_lang_bar.h` | Language bar manager | Replace input mode button with APL shifting button |
 | `src/win32/tip/tip_lang_bar.cc` | Language bar init/update | APL shifting key menu items, checkmark semantics |
 | `src/win32/tip/tip_text_service.cc` | Main TIP class | APL menu handling in `OnMenuSelect`, text insertion helper |
-| `src/win32/base/config_snapshot.h` | Config cache | Add APL shifting key fields |
-| `src/win32/base/config_snapshot.cc` | Config cache population | Read from `apl_shifting_key_set()` |
+| `src/win32/base/input_state.h` | Live config state | Add APL shifting key fields to `InputBehavior` |
+| `src/win32/base/config_snapshot.h` | Startup config cache | Add APL shifting key fields to `Info` (initial load only) |
+| `src/win32/base/config_snapshot.cc` | Startup cache population | Read from `apl_shifting_key_set()` |
+| `src/win32/tip/tip_private_context.cc` | Per-context init | Copy snapshot APL fields into `InputBehavior` |
 | `src/win32/tip/tip_keyevent_handler.cc` | Key event processing | APL intercept before normal Mozc path |
 
 ### New files
@@ -725,16 +756,18 @@ or irrelevant. `EnsureKanaLockUnlocked()` is harmless on an English system.
 The key event handler will still function — it just won't receive Japanese
 composition requests. Dead code can be cleaned up later.
 
-**Risk**: `ConfigSnapshot::Get()` is a one-shot static cache with no
-refresh mechanism. After a menu toggle writes via `SetConfig`, the
-snapshot still holds stale values.
+**Risk**: `ConfigSnapshot::Get()` is a `static const` one-shot cache — it
+cannot reflect config changes made after startup.
 
-*Mitigation*: The TIP maintains a mutable copy of the APL shifting key
-fields in `ConfigSnapshot::Info`. After `SetConfig`, update these fields
-directly — the new value is already known (it was just toggled), so no
-second IPC round-trip is needed. `ConfigSnapshot::Get()` is used only for
-the initial read at `ActivateEx` time. This matches the macOS pattern
-where ivars are updated immediately after `SetConfig`.
+*Mitigation*: The key event handler never reads `ConfigSnapshot` directly.
+It reads `InputBehavior`, a mutable per-context struct owned by
+`TipPrivateContext`. `ConfigSnapshot` is used only to populate
+`InputBehavior` at startup (in `EnsureInitialized()`). After a menu toggle,
+the handler updates `InputBehavior` directly — the new value is already
+known (it was just toggled), so no IPC round-trip or cache refresh is
+needed. `SetConfig` persists the change to disk for cross-restart durability.
+This mirrors the macOS approach where ivars are updated immediately after
+`SetConfig`.
 
 **Risk**: The Mozc server may not be running when the APL profile is
 activated (e.g., server crashed or was not started).
