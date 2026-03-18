@@ -110,10 +110,10 @@ CompositionMode GetCompositionMode(absl::string_view mode_id) {
     return mozc::commands::HALF_ASCII;
   }
   if (mode_id == kKatakanaModeId) {
-    return mozc::commands::FULL_KATAKANA;
+    return mozc::commands::APL;
   }
   if (mode_id == kHalfWidthKanaModeId) {
-    return mozc::commands::HALF_KATAKANA;
+    return mozc::commands::HIRAGANA;
   }
   if (mode_id == kFullWidthRomanModeId) {
     return mozc::commands::FULL_ASCII;
@@ -131,10 +131,9 @@ absl::string_view GetModeId(CompositionMode mode) {
     case mozc::commands::DIRECT:
     case mozc::commands::HALF_ASCII:
       return kRomanModeId;
-    case mozc::commands::FULL_KATAKANA:
+    case mozc::commands::APL:
       return kKatakanaModeId;
-    case mozc::commands::HALF_KATAKANA:
-      return kHalfWidthKanaModeId;
+    // HALF_KATAKANA removed from protocol
     case mozc::commands::FULL_ASCII:
       return kFullWidthRomanModeId;
     case mozc::commands::HIRAGANA:

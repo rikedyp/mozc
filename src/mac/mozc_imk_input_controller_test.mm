@@ -544,15 +544,15 @@ TEST_F(MozcImkInputControllerTest, SwitchMode) {
 
   // Switch from HIRAGANA to KATAKANA.  Just sending mode switching command.
   controller_.mode = commands::HIRAGANA;
-  [controller_ switchMode:commands::HALF_KATAKANA client:mock_client_];
-  EXPECT_EQ(controller_.mode, commands::HALF_KATAKANA);
+  [controller_ switchMode:commands::HIRAGANA client:mock_client_];
+  EXPECT_EQ(controller_.mode, commands::HIRAGANA);
   EXPECT_THAT(actual_command, Type(commands::SessionCommand::SWITCH_COMPOSITION_MODE));
-  EXPECT_THAT(actual_command, CompositionMode(commands::HALF_KATAKANA));
+  EXPECT_THAT(actual_command, CompositionMode(commands::HIRAGANA));
   Mock::VerifyAndClearExpectations(&mock_mozc_client_);
 
   // going to same mode does not cause sendcommand
-  [controller_ switchMode:commands::HALF_KATAKANA client:mock_client_];
-  EXPECT_EQ(controller_.mode, commands::HALF_KATAKANA);
+  [controller_ switchMode:commands::HIRAGANA client:mock_client_];
+  EXPECT_EQ(controller_.mode, commands::HIRAGANA);
 }
 
 TEST_F(MozcImkInputControllerTest, SwitchDisplayMode) {

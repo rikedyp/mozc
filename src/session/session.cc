@@ -88,11 +88,8 @@ void ApplyCompositionMode(const commands::CompositionMode mode,
     case commands::HIRAGANA:
       SwitchInputMode(transliteration::HIRAGANA, composer);
       break;
-    case commands::FULL_KATAKANA:
-      SwitchInputMode(transliteration::FULL_KATAKANA, composer);
-      break;
-    case commands::HALF_KATAKANA:
-      SwitchInputMode(transliteration::HALF_KATAKANA, composer);
+    case commands::APL:
+      SwitchInputMode(transliteration::HIRAGANA, composer);
       break;
     case commands::FULL_ASCII:
       SwitchInputMode(transliteration::FULL_ASCII, composer);
@@ -182,10 +179,10 @@ commands::CompositionMode ToCompositionMode(
       mode = commands::HIRAGANA;
       break;
     case transliteration::FULL_KATAKANA:
-      mode = commands::FULL_KATAKANA;
+      mode = commands::APL;
       break;
     case transliteration::HALF_KATAKANA:
-      mode = commands::HALF_KATAKANA;
+      mode = commands::HIRAGANA;
       break;
     case transliteration::FULL_ASCII:
       mode = commands::FULL_ASCII;
@@ -301,7 +298,7 @@ bool Session::SendCommand(commands::Command* command) {
       case commands::HIRAGANA:
         result = CompositionModeHiragana(command);
         break;
-      case commands::FULL_KATAKANA:
+      case commands::APL:
         result = CompositionModeFullKatakana(command);
         break;
       case commands::HALF_ASCII:
@@ -309,9 +306,6 @@ bool Session::SendCommand(commands::Command* command) {
         break;
       case commands::FULL_ASCII:
         result = CompositionModeFullASCII(command);
-        break;
-      case commands::HALF_KATAKANA:
-        result = CompositionModeHalfKatakana(command);
         break;
       default:
         LOG(ERROR) << "Unknown mode: " << session_command.composition_mode();

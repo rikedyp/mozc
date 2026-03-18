@@ -147,10 +147,9 @@ class IndicatorWindow::WindowImpl
       const int mode = status.mode();
       switch (mode) {
         case commands::HIRAGANA:
-        case commands::FULL_KATAKANA:
+        case commands::APL:
         case commands::HALF_ASCII:
         case commands::FULL_ASCII:
-        case commands::HALF_KATAKANA:
           current_image_ = sprites_[mode].bitmap.get();
           offset = sprites_[mode].offset;
           break;
@@ -201,8 +200,8 @@ class IndicatorWindow::WindowImpl
   LRESULT OnCreate(LPCREATESTRUCT create_struct) {
     EnableOrDisableWindowForWorkaround();
     constexpr int kModes[] = {
-        commands::DIRECT,     commands::HIRAGANA,   commands::FULL_KATAKANA,
-        commands::HALF_ASCII, commands::FULL_ASCII, commands::HALF_KATAKANA,
+        commands::DIRECT,     commands::HIRAGANA, commands::APL,
+        commands::HALF_ASCII, commands::FULL_ASCII,
     };
     for (size_t i = 0; i < std::size(kModes); ++i) {
       LoadSprite(kModes[i]);
@@ -284,17 +283,14 @@ class IndicatorWindow::WindowImpl
       case commands::HIRAGANA:
         info.label = "あ";
         break;
-      case commands::FULL_KATAKANA:
-        info.label = "ア";
+      case commands::APL:
+        info.label = "APL";
         break;
       case commands::HALF_ASCII:
         info.label = "_A";
         break;
       case commands::FULL_ASCII:
         info.label = "Ａ";
-        break;
-      case commands::HALF_KATAKANA:
-        info.label = "_ｱ";
         break;
     }
     if (!info.label.empty()) {

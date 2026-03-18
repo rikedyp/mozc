@@ -1205,13 +1205,13 @@ TEST_F(SessionPlaybackTest, SetModeInitializerTest) {
   EXPECT_TRUE(output.has_mode());
   EXPECT_EQ(output.mode(), commands::DIRECT);
 
-  mock_output.set_mode(commands::FULL_KATAKANA);
+  mock_output.set_mode(commands::APL);
   SetMockOutput(mock_output);
 
   EXPECT_TRUE(client_->SendKey(key_event, &output));
   EXPECT_EQ(output.consumed(), mock_output.consumed());
   EXPECT_TRUE(output.has_mode());
-  EXPECT_EQ(output.mode(), commands::FULL_KATAKANA);
+  EXPECT_EQ(output.mode(), commands::APL);
 
   std::vector<commands::Input> history;
   client_peer().GetHistoryInputs(&history);
@@ -1232,7 +1232,7 @@ TEST_F(SessionPlaybackTest, SetModeInitializerTest) {
   EXPECT_EQ(history.size(), 1);
   EXPECT_EQ(history[0].type(), commands::Input::SEND_KEY);
   EXPECT_EQ(history[0].key().special_key(), commands::KeyEvent::ON);
-  EXPECT_EQ(history[0].key().mode(), commands::FULL_KATAKANA);
+  EXPECT_EQ(history[0].key().mode(), commands::APL);
 #else   // __APPLE__
   // history is reset, but initializer is not required.
   EXPECT_EQ(history.size(), 0);

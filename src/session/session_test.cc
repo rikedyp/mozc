@@ -2006,7 +2006,7 @@ TEST_F(SessionTest, CompositionModeSwitchKanaType) {
   InsertCharacterChars("a", &session, &command);
   EXPECT_EQ(GetComposition(command), "ア");
   EXPECT_TRUE(command.output().has_mode());
-  EXPECT_EQ(command.output().mode(), commands::FULL_KATAKANA);
+  EXPECT_EQ(command.output().mode(), commands::APL);
 
   // FULL_KATRAKANA to HALF_KATAKANA
   command.Clear();
@@ -2016,7 +2016,7 @@ TEST_F(SessionTest, CompositionModeSwitchKanaType) {
   InsertCharacterChars("a", &session, &command);
   EXPECT_EQ(GetComposition(command), "ｱ");
   EXPECT_TRUE(command.output().has_mode());
-  EXPECT_EQ(command.output().mode(), commands::HALF_KATAKANA);
+  EXPECT_EQ(command.output().mode(), commands::HIRAGANA);
 
   // HALF_KATAKANA to HIRAGANA
   command.Clear();
@@ -4190,7 +4190,7 @@ TEST_F(SessionTest, InsertCharacterWithShiftKey) {
     InitSessionToPrecomposition(&session);
     commands::Command command;
     session.CompositionModeFullKatakana(&command);
-    EXPECT_EQ(command.output().mode(), commands::FULL_KATAKANA);
+    EXPECT_EQ(command.output().mode(), commands::APL);
     EXPECT_TRUE(SendKey("a", &session, &command));
     EXPECT_TRUE(SendKey("A", &session, &command));  // "アA"
     EXPECT_TRUE(SendKey("a", &session, &command));  // "アAa"
@@ -4391,18 +4391,18 @@ TEST_F(SessionTest, StatusOutput) {
     InitSessionToPrecomposition(&session);
     commands::Command command;
     session.CompositionModeFullKatakana(&command);
-    EXPECT_EQ(command.output().mode(), commands::FULL_KATAKANA);  // obsolete
-    EXPECT_EQ(command.output().status().mode(), commands::FULL_KATAKANA);
+    EXPECT_EQ(command.output().mode(), commands::APL);  // obsolete
+    EXPECT_EQ(command.output().status().mode(), commands::APL);
     EXPECT_EQ(command.output().status().comeback_mode(),
-              commands::FULL_KATAKANA);
+              commands::APL);
 
     EXPECT_TRUE(SendKey("a", &session, &command));
     ASSERT_TRUE(command.output().has_status());
     EXPECT_TRUE(command.output().status().activated());
-    EXPECT_EQ(command.output().mode(), commands::FULL_KATAKANA);  // obsolete
-    EXPECT_EQ(command.output().status().mode(), commands::FULL_KATAKANA);
+    EXPECT_EQ(command.output().mode(), commands::APL);  // obsolete
+    EXPECT_EQ(command.output().status().mode(), commands::APL);
     EXPECT_EQ(command.output().status().comeback_mode(),
-              commands::FULL_KATAKANA);
+              commands::APL);
 
     EXPECT_TRUE(SendKey("A", &session, &command));  // "アA"
     ASSERT_TRUE(command.output().has_status());
@@ -4411,7 +4411,7 @@ TEST_F(SessionTest, StatusOutput) {
     EXPECT_EQ(command.output().status().mode(), commands::HALF_ASCII);
     // Global mode should be kept as FULL_KATAKANA
     EXPECT_EQ(command.output().status().comeback_mode(),
-              commands::FULL_KATAKANA);
+              commands::APL);
 
     // When the IME is deactivated, the temporary composition mode is reset.
     EXPECT_TRUE(SendKey("OFF", &session, &command));  // "アA"
@@ -4421,9 +4421,9 @@ TEST_F(SessionTest, StatusOutput) {
     // deactivated.  This is the reason why command.output().mode() is
     // going to be obsolete.
     EXPECT_EQ(command.output().mode(), commands::DIRECT);
-    EXPECT_EQ(command.output().status().mode(), commands::FULL_KATAKANA);
+    EXPECT_EQ(command.output().status().mode(), commands::APL);
     EXPECT_EQ(command.output().status().comeback_mode(),
-              commands::FULL_KATAKANA);
+              commands::APL);
   }
 }
 
@@ -4993,11 +4993,11 @@ TEST_F(SessionTest, InsertSpaceWithCompositionMode) {
     InitSessionToPrecomposition(&session);
 
     commands::Command command;
-    EXPECT_TRUE(TestSendKeyWithMode("Space", commands::HALF_KATAKANA, &session,
+    EXPECT_TRUE(TestSendKeyWithMode("Space", commands::HIRAGANA, &session,
                                     &command));
     EXPECT_FALSE(command.output().consumed());
     EXPECT_TRUE(
-        SendKeyWithMode("Space", commands::HALF_KATAKANA, &session, &command));
+        SendKeyWithMode("Space", commands::HIRAGANA, &session, &command));
     // In this case, space key event should not be consumed.
     EXPECT_FALSE(command.output().consumed());
     EXPECT_EQ(session.context().state(), ImeContext::PRECOMPOSITION);
@@ -5017,11 +5017,11 @@ TEST_F(SessionTest, InsertSpaceWithCompositionMode) {
     EXPECT_PREEDIT("あ", command);
     EXPECT_EQ(session.context().state(), ImeContext::COMPOSITION);
 
-    EXPECT_TRUE(TestSendKeyWithMode("Space", commands::HALF_KATAKANA, &session,
+    EXPECT_TRUE(TestSendKeyWithMode("Space", commands::HIRAGANA, &session,
                                     &command));
     EXPECT_TRUE(command.output().consumed());
     EXPECT_TRUE(
-        SendKeyWithMode("Space", commands::HALF_KATAKANA, &session, &command));
+        SendKeyWithMode("Space", commands::HIRAGANA, &session, &command));
     EXPECT_TRUE(command.output().consumed());
     EXPECT_PREEDIT("あ ", command);
     EXPECT_EQ(session.context().state(), ImeContext::COMPOSITION);
@@ -5043,15 +5043,15 @@ TEST_F(SessionTest, InsertSpaceWithCompositionMode) {
     InitSessionToPrecomposition(&session);
 
     commands::Command command;
-    EXPECT_TRUE(TestSendKeyWithMode("Space", commands::HALF_KATAKANA, &session,
+    EXPECT_TRUE(TestSendKeyWithMode("Space", commands::HIRAGANA, &session,
                                     &command));
     EXPECT_TRUE(command.output().consumed());
     EXPECT_TRUE(
-        SendKeyWithMode("Space", commands::HALF_KATAKANA, &session, &command));
+        SendKeyWithMode("Space", commands::HIRAGANA, &session, &command));
     EXPECT_TRUE(command.output().consumed());
     EXPECT_RESULT("　", command);
     EXPECT_EQ(session.context().state(), ImeContext::PRECOMPOSITION);
-    EXPECT_EQ(command.output().mode(), commands::HALF_KATAKANA);
+    EXPECT_EQ(command.output().mode(), commands::HIRAGANA);
   }
   {
     Session session(engine);
@@ -5068,11 +5068,11 @@ TEST_F(SessionTest, InsertSpaceWithCompositionMode) {
     EXPECT_PREEDIT("あ", command);
     EXPECT_EQ(session.context().state(), ImeContext::COMPOSITION);
 
-    EXPECT_TRUE(TestSendKeyWithMode("Space", commands::HALF_KATAKANA, &session,
+    EXPECT_TRUE(TestSendKeyWithMode("Space", commands::HIRAGANA, &session,
                                     &command));
     EXPECT_TRUE(command.output().consumed());
     EXPECT_TRUE(
-        SendKeyWithMode("Space", commands::HALF_KATAKANA, &session, &command));
+        SendKeyWithMode("Space", commands::HIRAGANA, &session, &command));
     EXPECT_TRUE(command.output().consumed());
     EXPECT_PREEDIT("あ　", command);  // Full-width space
     EXPECT_EQ(session.context().state(), ImeContext::COMPOSITION);
@@ -5583,7 +5583,7 @@ TEST_F(SessionTest, InsertSpaceFullWidthOnHalfKanaInput) {
   commands::Command command;
 
   EXPECT_TRUE(session.CompositionModeHalfKatakana(&command));
-  EXPECT_EQ(command.output().mode(), commands::HALF_KATAKANA);
+  EXPECT_EQ(command.output().mode(), commands::HIRAGANA);
   InsertCharacterChars("a", &session, &command);
   EXPECT_EQ(GetComposition(command), "ｱ");
 
@@ -5721,7 +5721,7 @@ TEST_F(SessionTest, IsFullWidthInsertSpace) {
 
     // Use HALF_KATAKANA for the new input mode
     commands::Input input;
-    input.mutable_key()->set_mode(commands::HALF_KATAKANA);
+    input.mutable_key()->set_mode(commands::HIRAGANA);
 
     // Hiragana
     commands::Command command;
@@ -6520,7 +6520,7 @@ TEST_F(SessionTest, Issue2555503) {
 
   SendKey("backspace", &session, &command);
   EXPECT_EQ(GetComposition(command), "あ");
-  EXPECT_EQ(command.output().mode(), commands::FULL_KATAKANA);
+  EXPECT_EQ(command.output().mode(), commands::APL);
 }
 
 TEST_F(SessionTest, Issue2791640) {
@@ -6668,10 +6668,10 @@ TEST_F(SessionTest, IMEOnWithModeTest) {
     InitSessionToDirect(&session);
 
     commands::Command command;
-    command.mutable_input()->mutable_key()->set_mode(commands::FULL_KATAKANA);
+    command.mutable_input()->mutable_key()->set_mode(commands::APL);
     EXPECT_TRUE(session.IMEOn(&command));
     EXPECT_TRUE(command.output().has_mode());
-    EXPECT_EQ(command.output().mode(), commands::FULL_KATAKANA);
+    EXPECT_EQ(command.output().mode(), commands::APL);
     SendKey("a", &session, &command);
     EXPECT_SINGLE_SEGMENT("ア", command);
   }
@@ -6680,10 +6680,10 @@ TEST_F(SessionTest, IMEOnWithModeTest) {
     InitSessionToDirect(&session);
 
     commands::Command command;
-    command.mutable_input()->mutable_key()->set_mode(commands::HALF_KATAKANA);
+    command.mutable_input()->mutable_key()->set_mode(commands::HIRAGANA);
     EXPECT_TRUE(session.IMEOn(&command));
     EXPECT_TRUE(command.output().has_mode());
-    EXPECT_EQ(command.output().mode(), commands::HALF_KATAKANA);
+    EXPECT_EQ(command.output().mode(), commands::HIRAGANA);
     SendKey("a", &session, &command);
     // "ｱ" (half-width Katakana)
     EXPECT_SINGLE_SEGMENT("ｱ", command);
@@ -6727,11 +6727,11 @@ TEST_F(SessionTest, CompositionModeConsumed) {
   command.Clear();
   EXPECT_TRUE(session.CompositionModeFullKatakana(&command));
   EXPECT_TRUE(command.output().consumed());
-  EXPECT_EQ(command.output().mode(), mozc::commands::FULL_KATAKANA);
+  EXPECT_EQ(command.output().mode(), mozc::commands::APL);
   command.Clear();
   EXPECT_TRUE(session.CompositionModeHalfKatakana(&command));
   EXPECT_TRUE(command.output().consumed());
-  EXPECT_EQ(command.output().mode(), mozc::commands::HALF_KATAKANA);
+  EXPECT_EQ(command.output().mode(), mozc::commands::HIRAGANA);
   command.Clear();
   EXPECT_TRUE(session.CompositionModeFullASCII(&command));
   EXPECT_TRUE(command.output().consumed());
@@ -6785,13 +6785,13 @@ TEST_F(SessionTest, CompositionModeOutputHasComposition) {
   command.Clear();
   EXPECT_TRUE(session.CompositionModeFullKatakana(&command));
   EXPECT_TRUE(command.output().consumed());
-  EXPECT_EQ(command.output().mode(), mozc::commands::FULL_KATAKANA);
+  EXPECT_EQ(command.output().mode(), mozc::commands::APL);
   EXPECT_SINGLE_SEGMENT("あ", command);
 
   command.Clear();
   EXPECT_TRUE(session.CompositionModeHalfKatakana(&command));
   EXPECT_TRUE(command.output().consumed());
-  EXPECT_EQ(command.output().mode(), mozc::commands::HALF_KATAKANA);
+  EXPECT_EQ(command.output().mode(), mozc::commands::HIRAGANA);
   EXPECT_SINGLE_SEGMENT("あ", command);
 
   command.Clear();
@@ -6840,14 +6840,14 @@ TEST_F(SessionTest, CompositionModeOutputHasCandidates) {
   command.Clear();
   EXPECT_TRUE(session.CompositionModeFullKatakana(&command));
   EXPECT_TRUE(command.output().consumed());
-  EXPECT_EQ(command.output().mode(), mozc::commands::FULL_KATAKANA);
+  EXPECT_EQ(command.output().mode(), mozc::commands::APL);
   EXPECT_TRUE(command.output().has_candidate_window());
   EXPECT_TRUE(command.output().has_preedit());
 
   command.Clear();
   EXPECT_TRUE(session.CompositionModeHalfKatakana(&command));
   EXPECT_TRUE(command.output().consumed());
-  EXPECT_EQ(command.output().mode(), mozc::commands::HALF_KATAKANA);
+  EXPECT_EQ(command.output().mode(), mozc::commands::HIRAGANA);
   EXPECT_TRUE(command.output().has_candidate_window());
   EXPECT_TRUE(command.output().has_preedit());
 
@@ -7312,11 +7312,11 @@ TEST_F(SessionTest, InputSpaceWithKatakanaMode) {
   EXPECT_EQ(command.output().mode(), mozc::commands::HIRAGANA);
 
   SetSendKeyCommand("Space", &command);
-  command.mutable_input()->mutable_key()->set_mode(commands::FULL_KATAKANA);
+  command.mutable_input()->mutable_key()->set_mode(commands::APL);
   EXPECT_TRUE(session.SendKey(&command));
   EXPECT_TRUE(command.output().consumed());
   EXPECT_RESULT("　", command);
-  EXPECT_EQ(command.output().mode(), mozc::commands::FULL_KATAKANA);
+  EXPECT_EQ(command.output().mode(), mozc::commands::APL);
 }
 
 TEST_F(SessionTest, AlphanumericOfSSH) {
@@ -9994,13 +9994,13 @@ TEST_F(SessionTest, MakeSureIMEOn) {
     commands::Command command;
     SetSendCommandCommand(commands::SessionCommand::TURN_ON_IME, &command);
     command.mutable_input()->mutable_command()->set_composition_mode(
-        commands::FULL_KATAKANA);
+        commands::APL);
 
     ASSERT_TRUE(session.SendCommand(&command));
     EXPECT_TRUE(command.output().consumed());
     ASSERT_TRUE(command.output().has_status());
     EXPECT_TRUE(command.output().status().activated());
-    EXPECT_EQ(command.output().status().mode(), commands::FULL_KATAKANA);
+    EXPECT_EQ(command.output().status().mode(), commands::APL);
   }
 
   {
@@ -10049,13 +10049,13 @@ TEST_F(SessionTest, MakeSureIMEOff) {
     commands::Command command;
     SetSendCommandCommand(commands::SessionCommand::TURN_OFF_IME, &command);
     command.mutable_input()->mutable_command()->set_composition_mode(
-        commands::FULL_KATAKANA);
+        commands::APL);
 
     ASSERT_TRUE(session.SendCommand(&command));
     EXPECT_TRUE(command.output().consumed());
     ASSERT_TRUE(command.output().has_status());
     EXPECT_FALSE(command.output().status().activated());
-    EXPECT_EQ(command.output().status().mode(), commands::FULL_KATAKANA);
+    EXPECT_EQ(command.output().status().mode(), commands::APL);
   }
 
   {
@@ -10103,13 +10103,13 @@ TEST_F(SessionTest, MakeSureIMEOffWithCommitComposition) {
     commands::Command command;
     SetSendCommandCommand(commands::SessionCommand::TURN_OFF_IME, &command);
     command.mutable_input()->mutable_command()->set_composition_mode(
-        commands::FULL_KATAKANA);
+        commands::APL);
     ASSERT_TRUE(session.SendCommand(&command));
     EXPECT_RESULT("あいうえお", command);
     EXPECT_TRUE(command.output().consumed());
     ASSERT_TRUE(command.output().has_status());
     EXPECT_FALSE(command.output().status().activated());
-    EXPECT_EQ(command.output().status().mode(), commands::FULL_KATAKANA);
+    EXPECT_EQ(command.output().status().mode(), commands::APL);
   }
 }
 

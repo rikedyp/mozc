@@ -79,10 +79,10 @@ constexpr MozcEngineProperty kMozcEngineProperties[] = {
         "hiragana.png",
     },
     {
-        commands::FULL_KATAKANA,
-        "InputMode.Katakana",
-        "Katakana",
-        "ア",
+        commands::APL,
+        "InputMode.APL",
+        "APL",
+        "APL",
         "katakana_full.png",
     },
     {
@@ -98,13 +98,6 @@ constexpr MozcEngineProperty kMozcEngineProperties[] = {
         "Wide Latin",
         "Ａ",
         "alpha_full.png",
-    },
-    {
-        commands::HALF_KATAKANA,
-        "InputMode.HalfWidthKatakana",
-        "Half width katakana",
-        "_ｱ",
-        "katakana_half.png",
     },
 };
 

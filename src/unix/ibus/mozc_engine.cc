@@ -293,13 +293,13 @@ commands::CompositionMode ConvertCompositionMode(
     case ibus::Engine::HIRAGANA:
       return commands::HIRAGANA;
     case ibus::Engine::FULL_KATAKANA:
-      return commands::FULL_KATAKANA;
+      return commands::APL;
     case ibus::Engine::HALF_ASCII:
       return commands::HALF_ASCII;
     case ibus::Engine::FULL_ASCII:
       return commands::FULL_ASCII;
     case ibus::Engine::HALF_KATAKANA:
-      return commands::HALF_KATAKANA;
+      return commands::HIRAGANA;
     default:
       return commands::NUM_OF_COMPOSITIONS;
   }

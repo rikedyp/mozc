@@ -870,7 +870,7 @@ TEST_F(ComposerTest, InsertCharacterKeyEventWithInputMode) {
 
     // "i" (Katakana) → "あイ" (Katakana)
     EXPECT_TRUE(
-        InsertKeyWithMode("i", commands::FULL_KATAKANA, composer_.get()));
+        InsertKeyWithMode("i", commands::APL, composer_.get()));
     EXPECT_EQ(composer_->GetStringForPreedit(), "あイ");
     EXPECT_EQ(composer_->GetInputMode(), transliteration::FULL_KATAKANA);
 
@@ -3057,7 +3057,7 @@ TEST_F(ComposerTest, CreateComposerData) {
   table_->AddRule("ki", "き", "");
 
   InsertKey("a", composer_.get());
-  InsertKeyWithMode("a", commands::FULL_KATAKANA, composer_.get());
+  InsertKeyWithMode("a", commands::APL, composer_.get());
   InsertKey("k", composer_.get());
 
   ComposerData data(composer_->CreateComposerData());
@@ -3208,7 +3208,7 @@ TEST_F(ComposerTest, CreateComposerOperators) {
   table_->AddRule("ki", "き", "");
 
   InsertKey("a", composer_.get());
-  InsertKeyWithMode("a", commands::FULL_KATAKANA, composer_.get());
+  InsertKeyWithMode("a", commands::APL, composer_.get());
   InsertKey("k", composer_.get());
 
   const ComposerData data(composer_->CreateComposerData());
