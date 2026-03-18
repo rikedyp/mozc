@@ -35,7 +35,9 @@
 #include <windows.h>
 
 #include <cstdint>
+#include <fstream>
 #include <iterator>
+#include <string>
 #include <utility>
 
 #include "base/win32/com.h"
@@ -48,6 +50,17 @@
 namespace mozc {
 namespace win32 {
 namespace tsf {
+
+namespace {
+void AplLog(const std::string &msg) {
+  std::ofstream f(R"(C:\temp\mozc_apl_debug.log)",
+                  std::ios::app);
+  if (f.is_open()) {
+    f << msg << std::endl;
+  }
+  OutputDebugStringA(msg.c_str());
+}
+}  // namespace
 namespace {
 
 // The GUID of the help menu in the system language bar.
@@ -129,6 +142,8 @@ HRESULT TipLangBar::InitLangBar(TipLangBarCallback *text_service) {
   }
 
   if (apl_shifting_button_ == nullptr) {
+    AplLog("MOZC_APL: InitLangBar creating APL shifting button");
+
     // Add the "APL Shifting Key" button.
     const TipLangBarMenuItem kAplShiftingMenu[] = {
         {kTipLangBarItemTypeDefault,
@@ -159,9 +174,17 @@ HRESULT TipLangBar::InitLangBar(TipLangBarCallback *text_service) {
         &kAplShiftingMenu[0], std::size(kAplShiftingMenu), IDI_TOOL_NT,
         IDI_TOOL);
     if (result != S_OK) {
+      AplLog("MOZC_APL: APL shifting button Init FAILED, hr=" +
+             std::to_string(result));
       return result;
     }
-    lang_bar_item_mgr_->AddItem(apl_shifting_button.get());
+    const HRESULT add_result =
+        lang_bar_item_mgr_->AddItem(apl_shifting_button.get());
+    if (FAILED(add_result)) {
+      AplLog("MOZC_APL: AddItem FAILED, hr=" + std::to_string(add_result));
+    } else {
+      AplLog("MOZC_APL: APL shifting button added OK");
+    }
     apl_shifting_button_ = std::move(apl_shifting_button);
   }
 
