@@ -78,8 +78,7 @@ On Windows, releasing Alt without pressing another key activates the menu bar
 in Win32 applications. The Linux implementation handles this by suppressing
 bare-Alt release in the IME frontend. The Windows TIP can do the same in
 `OnKeyUp` by eating `VK_LMENU` releases when APL mode is active and Left Alt
-is the shifting key. This is a future concern (glyph insertion phase), not the
-POC.
+is the shifting key.
 
 ---
 
