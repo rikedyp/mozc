@@ -589,26 +589,32 @@ bool IsShiftingKeyHeld(const InputBehavior& behavior) {
   if (behavior.apl_shifting_right_ctrl && (GetKeyState(VK_RCONTROL) & 0x8000)) return true;
   if (behavior.apl_shifting_left_alt   && (GetKeyState(VK_LMENU)   & 0x8000)) return true;
   if (behavior.apl_shifting_right_alt  && (GetKeyState(VK_RMENU)   & 0x8000)) return true;
-  if (behavior.apl_shifting_caps_lock  && (GetKeyState(VK_CAPITAL)  & 0x0001)) return true;
+  if (behavior.apl_shifting_caps_lock  && (GetKeyState(VK_CAPITAL)  & 0x8000)) return true;
   return false;
 }
 ```
 
-Note: Caps Lock uses `& 0x0001` (toggle state / LED on) rather than
-`& 0x8000` (key currently pressed). This matches the Kanata-style usage where
-Caps Lock is a latching shift — turn it on, type APL glyphs, turn it off.
+Note: Caps Lock uses `& 0x8000` (key currently pressed), not `& 0x0001`
+(toggle state / LED on). Caps Lock is a while-held modifier, the same as Ctrl
+and Alt — the user holds it down, types APL glyphs, and releases it. Toggle
+states and prefix-key input (e.g., backtick as an APL dead key) are future
+work, not part of this design.
 
-**5c. Caps Lock toggle suppression** — When Caps Lock is a shifting key and
-APL mode is active, the TIP must eat `VK_CAPITAL` keydown in `OnTestKeyDown`
-to prevent the system from toggling the LED. This lets the user control Caps
-Lock state deliberately (e.g., via the physical key when APL is not active)
-while preventing accidental toggles during APL use.
-
-However, for the POC the simpler approach is to **let the LED toggle freely**
-and just read the toggle state. The user turns Caps Lock on to enter APL
-shifting mode, types glyphs, and turns it off when done. The LED serves as a
-visual indicator. This avoids the complexity of eating `VK_CAPITAL` while
-still allowing APL input through `OnTestKeyDown`.
+**5c. Caps Lock key-event suppression** — TODO: Investigate whether the TIP
+can eat the `VK_CAPITAL` keydown/keyup in `OnTestKeyDown`/`OnKeyUp` to
+suppress the system Caps Lock toggle behaviour when Caps Lock is configured as
+an APL shifting key and APL mode is active. The goal is to let the user hold
+Caps Lock purely as a modifier without the LED toggling or the system entering
+Caps Lock state. Determine:
+- Whether eating `VK_CAPITAL` in `OnTestKeyDown` (returning `eaten=TRUE`)
+  reliably prevents the toggle on both keydown and keyup across Win32 and UWP
+  apps
+- Whether `OnKeyUp` also needs to eat `VK_CAPITAL` to fully suppress the
+  toggle (some apps toggle on keyup rather than keydown)
+- Whether there are timing or focus-change edge cases where the toggle leaks
+  through despite eating the key
+- Whether the Caps Lock LED state can desync from what the system believes
+  (e.g., after a focus change to a non-TSF app) and how to handle that
 
 **5d. Left Alt bare-press suppression** — When Left Alt is a shifting key,
 releasing Alt without a character key press would activate the menu bar in
