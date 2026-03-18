@@ -10,7 +10,7 @@ implementation see [apl_macos.md](apl_macos.md).
 Scope
 -----
 
-This POC validates three things:
+This POC validates four things:
 
 1. **Installation**: Mozc registers as an **English** input method on Windows
    via TSF, with no Japanese profile.
@@ -18,11 +18,13 @@ This POC validates three things:
    with checkable items for each modifier key.
 3. **Config persistence**: The user's shifting key selection round-trips through
    `config.proto` via the Mozc server and survives IME restarts.
+4. **APL glyph production**: Holding a configured shifting key and pressing a
+   character key inserts the corresponding APL glyph, consuming the keystroke
+   before the application sees it.
 
-**Out of scope for this POC**: Actual APL glyph insertion (the `handleEvent`
-intercept equivalent), APL mode toggling, virtual key → char mapping, and
-cross-app testing. Those will follow in a subsequent phase once the foundation
-is validated.
+**Out of scope for this POC**: APL mode toggling (switching between APL and
+normal input), cross-app testing beyond Notepad/VSCode, and non-US keyboard
+layout support. Those will follow in a subsequent phase.
 
 ---
 
@@ -260,11 +262,11 @@ keyboard layout) but layout-dependent for symbol keys.
 | Modifier detection | `[event modifierFlags]` bitmask | `GetKeyState(VK_LCONTROL)` etc. per-key query |
 | L/R modifiers | Not reliably available | Full support via `VK_LCONTROL`/`VK_RCONTROL` etc. |
 
-For the glyph insertion phase (not this POC), we will need a
-`Win32VKToChar(WPARAM vk, LPARAM lParam)` function analogous to the macOS
-`AplVirtualKeyToChar`. The Windows version is simpler for letters (VK_A-VK_Z
-map directly to 'a'-'z') but needs scan code extraction from LPARAM for symbol
-keys to handle non-US layouts.
+Step W5 introduces `Win32VKToChar(WPARAM vk)` — analogous to the macOS
+`AplVirtualKeyToChar`. The Windows version is simpler for letters (VK_A–VK_Z
+map directly to 'a'–'z') but needs a lookup table for `VK_OEM_*` symbol keys.
+For the POC, only US QWERTY layout is supported; non-US layout support (using
+scan codes from `LPARAM`) is out of scope.
 
 ---
 
@@ -290,7 +292,9 @@ Phase 1 Plan: Windows POC
 
 **Goal**: Mozc installs as an English-only "Mozc APL" input method on Windows.
 The system tray shows an "APL Shifting Key" menu with five checkable modifier
-options. Toggling items persists to config and survives IME restarts.
+options. Toggling items persists to config and survives IME restarts. Holding
+a configured shifting key while pressing a character key inserts the
+corresponding APL glyph.
 
 **Baseline**: Current `windows-poc` branch (from `master`). No APL-related
 code exists yet.
@@ -304,10 +308,13 @@ independently testable. The risk profile is:
 - W2 is a registration change — testable via install + Settings UI
 - W3 is language bar menu — visible in system tray, no behavioral change
 - W4 is config wiring — menu toggles persist, no key handling changes
-- W5 is installer verification — full install/uninstall cycle
+- W5 is glyph production — behavioral change (key intercept + text insertion)
+- W6 is installer verification — full install/uninstall cycle
 
-No key interception or glyph insertion in this POC. The behavioral changes
-arrive in a separate phase after the foundation is validated.
+W5 comes after W4 because the key intercept reads the cached config fields
+(which shifting key is active) that W4 wires up. W6 is last because the
+installer is a "full stack" smoke test — it should verify the complete
+feature, including glyph production.
 
 ### Step W1: Proto changes (no behavioral change)
 
@@ -497,10 +504,129 @@ and reopen the menu — checkmark persists. Restart the IME (switch away and
 back, or restart the app) — checkmark still persists. Toggle multiple items
 simultaneously (e.g., Right Ctrl + Caps Lock both checked).
 
-### Step W5: Installer verification
+### Step W5: APL glyph production (behavioral change)
+
+Intercept key events when a configured shifting key is held, look up the APL
+glyph, and insert it directly — consuming the keystroke before the application
+sees it.
+
+**5a. Virtual key → character mapping** — New file `src/win32/tip/win32_vk_to_char.h`:
+
+```cpp
+// Returns the US QWERTY character for a Win32 virtual key code.
+// Letters (VK_A–VK_Z) map to 'a'–'z'. Digits (VK_0–VK_9) map to '0'–'9'.
+// Symbol keys (VK_OEM_*) map to their unshifted US QWERTY character.
+// Returns '\0' for unmapped keys (function keys, modifiers, etc.).
+char Win32VKToChar(WPARAM vk);
+
+// Returns the US QWERTY shifted character for a base character.
+// 'a'→'A', '1'→'!', '['→'{', etc.
+char ShiftedChar(char base);
+```
+
+This is the Windows equivalent of `src/mac/apl_keycode_map.h`. Simpler for
+letters/digits (sequential VK codes map directly) but needs a table for
+`VK_OEM_*` symbol keys. `ShiftedChar` is the same logic as the macOS version.
+
+**5b. Key intercept in `OnTestKeyDown` / `OnKeyDown`** — The intercept goes
+in `TipKeyeventHandler` (or a new helper called from it) and runs before the
+existing Mozc key processing:
+
+```
+OnKeyDown(vk, lParam):
+  if no shifting key configured → fall through to normal Mozc path
+  if shifting key is held (GetKeyState check):
+    base_char = Win32VKToChar(vk)
+    if base_char == '\0' → fall through (non-character key)
+    if Shift is also held:
+      shifted = ShiftedChar(base_char)
+      glyph = GetAplShiftedGlyph(shifted)
+    else:
+      glyph = GetAplGlyph(base_char)
+    if glyph found:
+      insert glyph via ITfInsertAtSelection / ITfRange
+      return eaten=TRUE
+    fall through (key has no APL mapping)
+  fall through to normal Mozc path
+```
+
+The `GetAplGlyph` / `GetAplShiftedGlyph` functions are cherry-picked from
+`src/session/apl_keymap.h` (same as macOS M5).
+
+**Modifier detection** — Check which shifting key is held:
+
+```cpp
+bool IsShiftingKeyHeld(const ConfigSnapshot::Info& info) {
+  if (info.apl_shifting_left_ctrl  && (GetKeyState(VK_LCONTROL) & 0x8000)) return true;
+  if (info.apl_shifting_right_ctrl && (GetKeyState(VK_RCONTROL) & 0x8000)) return true;
+  if (info.apl_shifting_left_alt   && (GetKeyState(VK_LMENU)   & 0x8000)) return true;
+  if (info.apl_shifting_right_alt  && (GetKeyState(VK_RMENU)   & 0x8000)) return true;
+  if (info.apl_shifting_caps_lock  && (GetKeyState(VK_CAPITAL)  & 0x0001)) return true;
+  return false;
+}
+```
+
+Note: Caps Lock uses `& 0x0001` (toggle state / LED on) rather than
+`& 0x8000` (key currently pressed). This matches the Kanata-style usage where
+Caps Lock is a latching shift — turn it on, type APL glyphs, turn it off.
+
+**5c. Caps Lock toggle suppression** — When Caps Lock is a shifting key and
+APL mode is active, the TIP must eat `VK_CAPITAL` keydown in `OnTestKeyDown`
+to prevent the system from toggling the LED. This lets the user control Caps
+Lock state deliberately (e.g., via the physical key when APL is not active)
+while preventing accidental toggles during APL use.
+
+However, for the POC the simpler approach is to **let the LED toggle freely**
+and just read the toggle state. The user turns Caps Lock on to enter APL
+shifting mode, types glyphs, and turns it off when done. The LED serves as a
+visual indicator. This avoids the complexity of eating `VK_CAPITAL` while
+still allowing APL input through `OnTestKeyDown`.
+
+**5d. Left Alt bare-press suppression** — When Left Alt is a shifting key,
+releasing Alt without a character key press would activate the menu bar in
+Win32 apps. The TIP suppresses this by eating `VK_LMENU` keyup in `OnKeyUp`
+when APL mode is active and Left Alt is configured as a shifting key. This
+matches the Linux branch's approach.
+
+**5e. Text insertion** — TSF text insertion uses `ITfInsertAtSelection`:
+
+```cpp
+// Simplified — real code needs ITfContext, ITfEditSession, etc.
+void InsertAplGlyph(ITfContext* context, const wchar_t* glyph) {
+  // Request an edit session
+  // In the session: ITfInsertAtSelection::InsertTextAtSelection(
+  //   ec, context, TF_IAS_NOQUERY, glyph, wcslen(glyph), nullptr);
+}
+```
+
+The glyph strings from `apl_keymap.h` are UTF-8 `string_view`; they need
+conversion to UTF-16 (`wchar_t`) for TSF. Since APL glyphs are all BMP
+characters (U+0000–U+FFFF), each is a single `wchar_t` — no surrogate pairs.
+
+**Files changed**:
+- `src/win32/tip/win32_vk_to_char.h` (new) — VK code → char mapping
+- `src/win32/tip/win32_vk_to_char.cc` (new) — implementation
+- `src/session/apl_keymap.h` (cherry-pick from macOS/Linux branch)
+- `src/session/apl_keymap.cc` (cherry-pick from macOS/Linux branch)
+- `src/session/BUILD.bazel` — add `apl_keymap` rule
+- `src/win32/tip/BUILD.bazel` — add `win32_vk_to_char` rule, add
+  `//session:apl_keymap` dep to TIP
+- `src/win32/tip/tip_keyevent_handler.cc` — APL intercept before normal
+  Mozc key processing
+- `src/win32/tip/tip_text_service.cc` — text insertion helper, edit session
+  management
+
+**Test**: Install, switch to Mozc APL. Enable "Right Ctrl" in the shifting
+key menu. Open Notepad. Hold Right Ctrl and press `a` — the APL glyph `⍺`
+(alpha) appears. Release Right Ctrl, press `a` — normal `a` appears. Test
+with Shift held: Right Ctrl + Shift + `a` → `⍶` (alpha underbar). Test
+multiple shifting keys: enable both Right Ctrl and Caps Lock, verify both
+produce glyphs independently.
+
+### Step W6: Installer verification
 
 Verify the WiX installer properly registers and enables the APL profile with
-the English language ID.
+the English language ID and that glyph production works end-to-end.
 
 **Files changed**:
 - None beyond W2 changes. The installer custom actions (`RegisterTIP`,
@@ -510,7 +636,9 @@ the English language ID.
 **Test**: Clean Windows VM. Run the MSI installer. Open Settings → Language →
 English → Keyboard. "Mozc APL" appears. Switch to Mozc APL — shifting key
 menu appears with correct checkmark state. Toggle items, restart, verify
-persistence. Uninstall — profile removed cleanly, no orphaned registry entries.
+persistence. Enable a shifting key, open Notepad, hold the key and type —
+APL glyphs appear. Uninstall — profile removed cleanly, no orphaned registry
+entries.
 
 ---
 
@@ -523,9 +651,9 @@ Open Questions (Require Experimental Testing)
 default action. Returning `eaten=TRUE` from `OnTestKeyDown` should prevent
 the Caps Lock LED and state from toggling.
 
-**Test** (future glyph phase): Register `VK_CAPITAL` as a preserved key or
-handle it in `OnTestKeyDown`. Press Caps Lock — verify the LED does not
-toggle and the key is consumed.
+**Test** (W5): Register `VK_CAPITAL` as a preserved key or handle it in
+`OnTestKeyDown`. Press Caps Lock — verify the LED does not toggle and the
+key is consumed.
 
 ### Q2: Can the TIP distinguish L/R modifiers reliably?
 
@@ -534,8 +662,8 @@ are standard Win32 APIs and should work from within a TSF key event handler.
 The `LPARAM` scan code also encodes the extended-key bit (bit 24) which
 distinguishes right-side keys.
 
-**Test** (future glyph phase): In `OnKeyDown`, call `GetKeyState(VK_LCONTROL)`
-and `GetKeyState(VK_RCONTROL)` — verify they report independently.
+**Test** (W5): In `OnKeyDown`, call `GetKeyState(VK_LCONTROL)` and
+`GetKeyState(VK_RCONTROL)` — verify they report independently.
 
 ### Q3: Does eating Ctrl+A prevent "select all" in Notepad / VSCode?
 
@@ -543,8 +671,8 @@ and `GetKeyState(VK_RCONTROL)` — verify they report independently.
 VSCode (Electron/Chromium), needs testing — Chromium has its own keyboard
 handling that may race with TSF.
 
-**Test** (future glyph phase): With APL mode active and R-Ctrl as shifting
-key, press R-Ctrl+A. Expected: glyph inserted, not "select all".
+**Test** (W5): With APL mode active and R-Ctrl as shifting key, press
+R-Ctrl+A. Expected: glyph inserted, not "select all".
 
 ### Q4: Does the Mozc server need to be running for GetConfig/SetConfig?
 
@@ -569,13 +697,19 @@ Key Files (Windows)
 | `src/win32/tip/tip_lang_bar_callback.h` | Menu item IDs | Add APL shifting key item IDs (50-54) |
 | `src/win32/tip/tip_lang_bar.h` | Language bar manager | Replace input mode button with APL shifting button |
 | `src/win32/tip/tip_lang_bar.cc` | Language bar init/update | APL shifting key menu items, checkmark semantics |
-| `src/win32/tip/tip_text_service.cc` | Main TIP class | APL menu handling in `OnMenuSelect`, remove Japanese mode switching |
+| `src/win32/tip/tip_text_service.cc` | Main TIP class | APL menu handling in `OnMenuSelect`, text insertion helper |
 | `src/win32/base/config_snapshot.h` | Config cache | Add APL shifting key fields |
 | `src/win32/base/config_snapshot.cc` | Config cache population | Read from `apl_shifting_key_set()` |
+| `src/win32/tip/tip_keyevent_handler.cc` | Key event processing | APL intercept before normal Mozc path |
 
-### New files (none for POC)
+### New files
 
-No new files are needed for the POC. All changes extend or modify existing code.
+| File | Role | Step |
+|------|------|------|
+| `src/win32/tip/win32_vk_to_char.h` | Win32 VK → US QWERTY char mapping | W5 |
+| `src/win32/tip/win32_vk_to_char.cc` | Implementation | W5 |
+| `src/session/apl_keymap.h` | APL glyph lookup (cherry-pick from macOS/Linux) | W5 |
+| `src/session/apl_keymap.cc` | Implementation (cherry-pick from macOS/Linux) | W5 |
 
 ---
 
@@ -609,27 +743,20 @@ activated (e.g., server crashed or was not started).
 shows unchecked items as default. The broker auto-restarts the server.
 
 **Risk**: Caps Lock is a toggle key on Windows — pressing it changes
-persistent LED state. When used as an APL shifting key, the glyph
-insertion phase will need to handle this.
+persistent LED state. When used as an APL shifting key, the key intercept
+in W5 must handle this.
 
-*Design note for glyph insertion phase*: On Windows, the APL key intercept
-must:
-
-1. Read toggle state via `GetKeyState(VK_CAPITAL) & 0x0001`, not the
-   `IsPressed(VK_CAPITAL)` check that the existing keyevent handler uses
-   (line 431 of `keyevent_handler.cc`). Caps Lock as a shifting key means
-   "when the LED is on, character keys produce APL glyphs."
-2. Eat `VK_CAPITAL` keydown/keyup when in APL mode to prevent the system
-   from toggling the LED unexpectedly, or alternatively let the LED serve
-   as a visual indicator of APL shift state.
-3. The intercept must happen before `TipKeyeventHandler` processes the key,
-   since the existing handler at `keyevent_handler.cc:460` would otherwise
-   forward `VK_CAPITAL` to the Mozc server as `KeyEvent::CAPS`.
-
-This is out of scope for the current POC (no key interception), but the
-menu and config wiring in W3/W4 must not preclude this approach. Note:
-Caps Lock was abandoned as a shifting key option on the macOS branch;
-however it is actively used on Windows via Kanata and must work in this
-POC.
+*Design note (W5)*: The APL key intercept reads toggle state via
+`GetKeyState(VK_CAPITAL) & 0x0001` (LED on = APL shift active), not the
+`IsPressed(VK_CAPITAL)` check that the existing keyevent handler uses
+(line 431 of `keyevent_handler.cc`). The POC lets the LED toggle freely
+and uses it as a visual indicator — the user turns Caps Lock on to enter
+APL shifting mode and off when done. Eating `VK_CAPITAL` to suppress
+the toggle is deferred as a refinement. The intercept must happen before
+`TipKeyeventHandler` processes the key, since the existing handler at
+`keyevent_handler.cc:460` would otherwise forward `VK_CAPITAL` to the
+Mozc server as `KeyEvent::CAPS`. Note: Caps Lock was abandoned as a
+shifting key option on the macOS branch; however it is actively used on
+Windows via Kanata and must work in this POC.
 
 

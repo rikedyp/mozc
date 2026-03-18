@@ -1,7 +1,3 @@
-Proto caps_lock field 3 is shared cross-platform but the semantics differ — macOS treats Caps Lock as a modifier (must intercept before KeyCodeMap.mm strips it), Windows treats it as a toggle key (must eat VK_CAPITAL to suppress LED); sharing the field implies behavioral equivalence that doesn't exist.
-
-Enabling Left Alt in the menu with no bare-press suppression is a user-hostile trap — The POC lets users check "Left Alt" but defers the OnKeyUp eating to the glyph phase, so selecting it actively breaks Alt menu-bar access with zero benefit until glyph insertion ships.
-
 ConfigSnapshot uses GetSharedConfig() (shared memory) while menu toggle uses client->GetConfig/SetConfig (IPC to server) — These are two different config access paths that may not be immediately consistent, risking stale reads after writes.
 
 All language bar changes are throwaway work — A production version supporting both Japanese and APL will need the input mode toggle and the APL menu coexisting (or a mode-dependent menu), so the W3 rewrite that rips out the Japanese menus will be entirely undone.
