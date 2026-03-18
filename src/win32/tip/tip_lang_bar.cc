@@ -141,6 +141,67 @@ HRESULT TipLangBar::InitLangBar(TipLangBarCallback *text_service) {
     }
   }
 
+  // The GUID_LBI_INPUTMODE button is what Windows 10/11 uses for the system
+  // tray input indicator icon.  Without it, no icon appears in the tray.
+  if (!input_mode_button_for_win8_) {
+    AplLog("MOZC_APL: Creating input_mode_button_for_win8_ (GUID_LBI_INPUTMODE)");
+
+    // Merged menu shown when right-clicking the tray icon: APL shifting keys,
+    // separator, tool items, separator, help items.
+    const TipLangBarMenuItem kTrayMenu[] = {
+        {kTipLangBarItemTypeDefault,
+         TipLangBarCallback::kAplShiftingKeyLeftCtrl,
+         IDS_APL_SHIFTING_LEFT_CTRL, 0, 0},
+        {kTipLangBarItemTypeDefault,
+         TipLangBarCallback::kAplShiftingKeyRightCtrl,
+         IDS_APL_SHIFTING_RIGHT_CTRL, 0, 0},
+        {kTipLangBarItemTypeDefault,
+         TipLangBarCallback::kAplShiftingKeyLeftAlt,
+         IDS_APL_SHIFTING_LEFT_ALT, 0, 0},
+        {kTipLangBarItemTypeDefault,
+         TipLangBarCallback::kAplShiftingKeyRightAlt,
+         IDS_APL_SHIFTING_RIGHT_ALT, 0, 0},
+        {kTipLangBarItemTypeDefault,
+         TipLangBarCallback::kAplShiftingKeyCapsLock,
+         IDS_APL_SHIFTING_CAPS_LOCK, 0, 0},
+        {kTipLangBarItemTypeSeparator, 0, 0, 0, 0},
+        {kTipLangBarItemTypeDefault, TipLangBarCallback::kProperty,
+         IDS_PROPERTY, IDI_PROPERTY_NT, IDI_PROPERTY},
+        {kTipLangBarItemTypeSeparator, 0, 0, 0, 0},
+        {kTipLangBarItemTypeDefault, TipLangBarCallback::kAbout, IDS_ABOUT, 0,
+         0},
+        {kTipLangBarItemTypeDefault, TipLangBarCallback::kHelp, IDS_HELP, 0, 0},
+    };
+
+    const TipLangBarMenuItem kDisabledItem = {kTipLangBarItemTypeDefault, 0,
+                                              IDS_DISABLED, IDI_DISABLED_NT,
+                                              IDI_DISABLED};
+
+    constexpr bool kNonMenuButton = false;
+    auto input_mode_menu = MakeComPtr<TipLangBarToggleButton>(
+        text_service, GUID_LBI_INPUTMODE, kNonMenuButton, kShowInTaskbar);
+    if (input_mode_menu == nullptr) {
+      return E_OUTOFMEMORY;
+    }
+
+    result = input_mode_menu->Init(TipDllModule::module_handle(),
+                                   IDS_WIN8_TRAY_ITEM, kTrayMenu,
+                                   std::size(kTrayMenu), kDisabledItem);
+    if (FAILED(result)) {
+      AplLog("MOZC_APL: input_mode_button_for_win8_ Init FAILED, hr=" +
+             std::to_string(result));
+      return result;
+    }
+    result = lang_bar_item_mgr_->AddItem(input_mode_menu.get());
+    if (FAILED(result)) {
+      AplLog("MOZC_APL: input_mode_button_for_win8_ AddItem FAILED, hr=" +
+             std::to_string(result));
+    } else {
+      AplLog("MOZC_APL: input_mode_button_for_win8_ added OK");
+    }
+    input_mode_button_for_win8_ = std::move(input_mode_menu);
+  }
+
   if (apl_shifting_button_ == nullptr) {
     AplLog("MOZC_APL: InitLangBar creating APL shifting button");
 
@@ -273,6 +334,10 @@ HRESULT TipLangBar::UninitLangBar() {
     return E_FAIL;
   }
 
+  if (input_mode_button_for_win8_) {
+    item->RemoveItem(input_mode_button_for_win8_.get());
+    input_mode_button_for_win8_.reset();
+  }
   if (apl_shifting_button_) {
     item->RemoveItem(apl_shifting_button_.get());
     apl_shifting_button_.reset();
@@ -301,6 +366,9 @@ HRESULT TipLangBar::UninitLangBar() {
 }
 
 HRESULT TipLangBar::UpdateMenu(bool enabled, uint32_t composition_mode) {
+  if (input_mode_button_for_win8_) {
+    input_mode_button_for_win8_->SetEnabled(enabled);
+  }
   if (apl_shifting_button_) {
     apl_shifting_button_->SetEnabled(enabled);
     apl_shifting_button_->OnUpdate(TF_LBI_STATUS);
@@ -318,7 +386,7 @@ void TipLangBar::ToggleAplShiftingItem(UINT item_id) {
 }
 
 bool TipLangBar::IsInitialized() const {
-  return apl_shifting_button_ != nullptr;
+  return input_mode_button_for_win8_ != nullptr;
 }
 
 }  // namespace tsf

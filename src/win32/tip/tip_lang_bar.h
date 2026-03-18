@@ -77,6 +77,12 @@ class TipLangBar {
   //     around refcount on Windows 8 release preview. b/6106437
   wil::com_ptr_nothrow<ITfLangBarItemMgr> lang_bar_item_mgr_;
 
+  // Windows 10/11 system tray input indicator — must be a TipLangBarToggleButton
+  // registered with GUID_LBI_INPUTMODE to show the tray icon.  Right-click on
+  // this button shows the APL shifting key items plus tool/help items (same
+  // merged menu the original Mozc used for Win8+).
+  wil::com_ptr_nothrow<TipLangBarToggleButton> input_mode_button_for_win8_;
+
   // Represents the APL shifting key menu in the language bar.
   wil::com_ptr_nothrow<TipLangBarMenuButton> apl_shifting_button_;
 
