@@ -64,6 +64,9 @@ class TipLangBar {
   // Updates the selected menu in the language bar.
   HRESULT UpdateMenu(bool enabled, uint32_t composition_mode);
 
+  // Toggles the checkmark on an APL shifting key menu item.
+  void ToggleAplShiftingItem(UINT item_id);
+
   // Returns true if this instance is already initialized.
   bool IsInitialized() const;
 
@@ -74,13 +77,8 @@ class TipLangBar {
   //     around refcount on Windows 8 release preview. b/6106437
   wil::com_ptr_nothrow<ITfLangBarItemMgr> lang_bar_item_mgr_;
 
-  // Represents the button menu in the language bar.
-  // NOTE: ImeToggleButtonMenu inherits ITfLangBarItemButton and ITfSource,
-  // which inherit IUnknown. Because of this, using CComPtr<ImeIconButtonMenu>
-  // causes a compile error due to the ambiguous overload resolution.
-  // To avoid the compile error we use CComPtr<ITfLangBarItemButton> instead.
-  wil::com_ptr_nothrow<TipLangBarToggleButton> input_button_menu_;
-  wil::com_ptr_nothrow<TipLangBarToggleButton> input_mode_button_for_win8_;
+  // Represents the APL shifting key menu in the language bar.
+  wil::com_ptr_nothrow<TipLangBarMenuButton> apl_shifting_button_;
 
   // Represents the tool button menu in the language bar.
   wil::com_ptr_nothrow<TipLangBarMenuButton> tool_button_menu_;

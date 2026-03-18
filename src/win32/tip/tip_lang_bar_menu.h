@@ -231,6 +231,9 @@ class TipLangBarMenuButton final : public TipLangBarButton {
                const TipLangBarMenuItem *menu, int count,
                UINT menu_icon_id_for_non_theme, UINT menu_icon_id_for_theme);
 
+  // Toggles TF_LBMENUF_CHECKED on the menu item with the given item_id.
+  void ToggleItemCheckmark(UINT item_id);
+
  private:
   // Represents the icon of the language bar menu.
   UINT menu_icon_id_for_theme_;

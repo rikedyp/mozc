@@ -38,10 +38,8 @@
 #include <iterator>
 #include <utility>
 
-#include "absl/log/log.h"
 #include "base/win32/com.h"
 #include "base/win32/hresultor.h"
-#include "protocol/commands.pb.h"
 #include "win32/tip/tip_dll_module.h"
 #include "win32/tip/tip_lang_bar_callback.h"
 #include "win32/tip/tip_lang_bar_menu.h"
@@ -108,26 +106,6 @@ constexpr GUID kTipLangBarItem_HelpMenu = {
 
 constexpr bool kShowInTaskbar = true;
 
-TipLangBarCallback::ItemId GetItemId(DWORD composition_mode) {
-  switch (composition_mode) {
-    case commands::DIRECT:
-      return TipLangBarCallback::kDirect;
-    case commands::HIRAGANA:
-      return TipLangBarCallback::kHiragana;
-    case commands::FULL_KATAKANA:
-      return TipLangBarCallback::kFullKatakana;
-    case commands::HALF_ASCII:
-      return TipLangBarCallback::kHalfAlphanumeric;
-    case commands::FULL_ASCII:
-      return TipLangBarCallback::kFullAlphanumeric;
-    case commands::HALF_KATAKANA:
-      return TipLangBarCallback::kHalfKatakana;
-    default:
-      LOG(ERROR) << "Unknown composition mode: " << composition_mode;
-      return TipLangBarCallback::kDirect;
-  }
-}
-
 }  // namespace
 
 // Initializes button menus in the language bar.
@@ -150,94 +128,41 @@ HRESULT TipLangBar::InitLangBar(TipLangBarCallback *text_service) {
     }
   }
 
-  const TipLangBarMenuItem kInputMenuDisabled = {kTipLangBarItemTypeDefault, 0,
-                                                 IDS_DISABLED, IDI_DISABLED_NT,
-                                                 IDI_DISABLED};
-
-  if (input_button_menu_ == nullptr) {
-    // Add the "Input Mode" button.
-    constexpr TipLangBarMenuItem kInputMenu[] = {
-        {kTipLangBarItemTypeDefault, TipLangBarCallback::kHiragana,
-         IDS_HIRAGANA, IDI_HIRAGANA_NT, IDI_HIRAGANA},
-        {kTipLangBarItemTypeDefault, TipLangBarCallback::kFullKatakana,
-         IDS_FULL_KATAKANA, IDI_FULL_KATAKANA_NT, IDI_FULL_KATAKANA},
-        {kTipLangBarItemTypeDefault, TipLangBarCallback::kFullAlphanumeric,
-         IDS_FULL_ALPHANUMERIC, IDI_FULL_ALPHANUMERIC_NT,
-         IDI_FULL_ALPHANUMERIC},
-        {kTipLangBarItemTypeDefault, TipLangBarCallback::kHalfKatakana,
-         IDS_HALF_KATAKANA, IDI_HALF_KATAKANA_NT, IDI_HALF_KATAKANA},
-        {kTipLangBarItemTypeDefault, TipLangBarCallback::kHalfAlphanumeric,
-         IDS_HALF_ALPHANUMERIC, IDI_HALF_ALPHANUMERIC_NT,
-         IDI_HALF_ALPHANUMERIC},
-        {kTipLangBarItemTypeRadioChecked, TipLangBarCallback::kDirect,
-         IDS_DIRECT, IDI_DIRECT_NT, IDI_DIRECT},
-        {kTipLangBarItemTypeSeparator, 0, 0, 0, 0},
-        {kTipLangBarItemTypeDefault, TipLangBarCallback::kCancel, IDS_CANCEL, 0,
-         0},
+  if (apl_shifting_button_ == nullptr) {
+    // Add the "APL Shifting Key" button.
+    const TipLangBarMenuItem kAplShiftingMenu[] = {
+        {kTipLangBarItemTypeDefault,
+         TipLangBarCallback::kAplShiftingKeyLeftCtrl,
+         IDS_APL_SHIFTING_LEFT_CTRL, 0, 0},
+        {kTipLangBarItemTypeDefault,
+         TipLangBarCallback::kAplShiftingKeyRightCtrl,
+         IDS_APL_SHIFTING_RIGHT_CTRL, 0, 0},
+        {kTipLangBarItemTypeDefault,
+         TipLangBarCallback::kAplShiftingKeyLeftAlt,
+         IDS_APL_SHIFTING_LEFT_ALT, 0, 0},
+        {kTipLangBarItemTypeDefault,
+         TipLangBarCallback::kAplShiftingKeyRightAlt,
+         IDS_APL_SHIFTING_RIGHT_ALT, 0, 0},
+        {kTipLangBarItemTypeDefault,
+         TipLangBarCallback::kAplShiftingKeyCapsLock,
+         IDS_APL_SHIFTING_CAPS_LOCK, 0, 0},
     };
 
-    constexpr bool kMenuButton = true;
-    auto input_button_menu = MakeComPtr<TipLangBarToggleButton>(
-        text_service, kTipLangBarItem_Button, kMenuButton, kShowInTaskbar);
-    if (input_button_menu == nullptr) {
+    auto apl_shifting_button = MakeComPtr<TipLangBarMenuButton>(
+        text_service, kTipLangBarItem_Button, kShowInTaskbar);
+    if (apl_shifting_button == nullptr) {
       return E_OUTOFMEMORY;
     }
 
-    result = input_button_menu->Init(TipDllModule::module_handle(),
-                                     IDS_INPUTMODE, &kInputMenu[0],
-                                     std::size(kInputMenu), kInputMenuDisabled);
+    result = apl_shifting_button->Init(
+        TipDllModule::module_handle(), IDS_APL_SHIFTING_KEY,
+        &kAplShiftingMenu[0], std::size(kAplShiftingMenu), IDI_TOOL_NT,
+        IDI_TOOL);
     if (result != S_OK) {
       return result;
     }
-    lang_bar_item_mgr_->AddItem(input_button_menu.get());
-    input_button_menu_ = std::move(input_button_menu);
-  }
-
-  if (!input_mode_button_for_win8_) {
-    // Add the "Input Mode" button.
-    constexpr TipLangBarMenuItem kInputMenu[] = {
-        {kTipLangBarItemTypeDefault, TipLangBarCallback::kHiragana,
-         IDS_HIRAGANA, IDI_HIRAGANA_NT, IDI_HIRAGANA},
-        {kTipLangBarItemTypeDefault, TipLangBarCallback::kFullKatakana,
-         IDS_FULL_KATAKANA, IDI_FULL_KATAKANA_NT, IDI_FULL_KATAKANA},
-        {kTipLangBarItemTypeDefault, TipLangBarCallback::kFullAlphanumeric,
-         IDS_FULL_ALPHANUMERIC, IDI_FULL_ALPHANUMERIC_NT,
-         IDI_FULL_ALPHANUMERIC},
-        {kTipLangBarItemTypeDefault, TipLangBarCallback::kHalfKatakana,
-         IDS_HALF_KATAKANA, IDI_HALF_KATAKANA_NT, IDI_HALF_KATAKANA},
-        {kTipLangBarItemTypeDefault, TipLangBarCallback::kHalfAlphanumeric,
-         IDS_HALF_ALPHANUMERIC, IDI_HALF_ALPHANUMERIC_NT,
-         IDI_HALF_ALPHANUMERIC},
-        {kTipLangBarItemTypeDefault, TipLangBarCallback::kDirect, IDS_DIRECT,
-         IDI_DIRECT_NT, IDI_DIRECT},
-        {kTipLangBarItemTypeSeparator, 0, 0, 0, 0},
-        {kTipLangBarItemTypeDefault, TipLangBarCallback::kDictionary,
-         IDS_DICTIONARY, IDI_DICTIONARY_NT, IDI_DICTIONARY},
-        {kTipLangBarItemTypeDefault, TipLangBarCallback::kWordRegister,
-         IDS_WORD_REGISTER, IDI_DICTIONARY_NT, IDI_DICTIONARY},
-        {kTipLangBarItemTypeDefault, TipLangBarCallback::kProperty,
-         IDS_PROPERTY, IDI_PROPERTY_NT, IDI_PROPERTY},
-        {kTipLangBarItemTypeSeparator, 0, 0, 0, 0},
-        {kTipLangBarItemTypeDefault, TipLangBarCallback::kAbout, IDS_ABOUT, 0,
-         0},
-        {kTipLangBarItemTypeDefault, TipLangBarCallback::kHelp, IDS_HELP, 0, 0},
-    };
-
-    constexpr bool kNonMenuButton = false;
-    auto input_mode_menu = MakeComPtr<TipLangBarToggleButton>(
-        text_service, GUID_LBI_INPUTMODE, kNonMenuButton, kShowInTaskbar);
-    if (input_mode_menu == nullptr) {
-      return E_OUTOFMEMORY;
-    }
-
-    result = input_mode_menu->Init(TipDllModule::module_handle(),
-                                   IDS_WIN8_TRAY_ITEM, kInputMenu,
-                                   std::size(kInputMenu), kInputMenuDisabled);
-    if (FAILED(result)) {
-      return result;
-    }
-    result = lang_bar_item_mgr_->AddItem(input_mode_menu.get());
-    input_mode_button_for_win8_ = std::move(input_mode_menu);
+    lang_bar_item_mgr_->AddItem(apl_shifting_button.get());
+    apl_shifting_button_ = std::move(apl_shifting_button);
   }
 
   if (tool_button_menu_ == nullptr) {
@@ -325,13 +250,9 @@ HRESULT TipLangBar::UninitLangBar() {
     return E_FAIL;
   }
 
-  if (input_mode_button_for_win8_) {
-    item->RemoveItem(input_mode_button_for_win8_.get());
-    input_mode_button_for_win8_.reset();
-  }
-  if (input_button_menu_) {
-    item->RemoveItem(input_button_menu_.get());
-    input_button_menu_.reset();
+  if (apl_shifting_button_) {
+    item->RemoveItem(apl_shifting_button_.get());
+    apl_shifting_button_.reset();
   }
   if (tool_button_menu_) {
     item->RemoveItem(tool_button_menu_.get());
@@ -357,17 +278,24 @@ HRESULT TipLangBar::UninitLangBar() {
 }
 
 HRESULT TipLangBar::UpdateMenu(bool enabled, uint32_t composition_mode) {
-  const UINT menu_id = GetItemId(composition_mode);
-  input_button_menu_->SelectMenuItem(menu_id);
-  input_mode_button_for_win8_->SelectMenuItem(menu_id);
-  input_button_menu_->SetEnabled(enabled);
-  tool_button_menu_->SetEnabled(enabled);
-  input_mode_button_for_win8_->SetEnabled(enabled);
+  if (apl_shifting_button_) {
+    apl_shifting_button_->SetEnabled(enabled);
+    apl_shifting_button_->OnUpdate(TF_LBI_STATUS);
+  }
+  if (tool_button_menu_) {
+    tool_button_menu_->SetEnabled(enabled);
+  }
   return S_OK;
 }
 
+void TipLangBar::ToggleAplShiftingItem(UINT item_id) {
+  if (apl_shifting_button_) {
+    apl_shifting_button_->ToggleItemCheckmark(item_id);
+  }
+}
+
 bool TipLangBar::IsInitialized() const {
-  return input_button_menu_ || input_mode_button_for_win8_;
+  return apl_shifting_button_ != nullptr;
 }
 
 }  // namespace tsf

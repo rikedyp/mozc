@@ -499,6 +499,17 @@ STDMETHODIMP TipLangBarMenuButton::OnMenuSelect(UINT menu_id) {
   return result;
 }
 
+void TipLangBarMenuButton::ToggleItemCheckmark(UINT item_id) {
+  for (size_t i = 0; i < menu_data_size(); ++i) {
+    TipLangBarMenuData *data = menu_data(i);
+    if (data != nullptr && data->item_id_ == item_id) {
+      data->flags_ ^= TF_LBMENUF_CHECKED;
+      OnUpdate(TF_LBI_STATUS);
+      return;
+    }
+  }
+}
+
 // Implements the ITfLangBarItem::GetInfo() function.
 // This function is called by Windows to update this button menu.
 STDMETHODIMP TipLangBarMenuButton::GetInfo(TF_LANGBARITEMINFO *item_info) {

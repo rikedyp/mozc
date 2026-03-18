@@ -189,27 +189,6 @@ HRESULT SpawnTool(const std::string &command) {
   return S_OK;
 }
 
-commands::CompositionMode GetMozcMode(TipLangBarCallback::ItemId menu_id) {
-  switch (menu_id) {
-    case TipLangBarCallback::kDirect:
-      return commands::DIRECT;
-    case TipLangBarCallback::kHiragana:
-      return commands::HIRAGANA;
-    case TipLangBarCallback::kFullKatakana:
-      return commands::FULL_KATAKANA;
-    case TipLangBarCallback::kHalfAlphanumeric:
-      return commands::HALF_ASCII;
-    case TipLangBarCallback::kFullAlphanumeric:
-      return commands::FULL_ASCII;
-    case TipLangBarCallback::kHalfKatakana:
-      return commands::HALF_KATAKANA;
-    default:
-      DLOG(FATAL) << "Unexpected item id: " << menu_id;
-      // Fall back to DIRECT in release builds.
-      return commands::DIRECT;
-  }
-}
-
 std::string GetMozcToolCommand(TipLangBarCallback::ItemId menu_id) {
   switch (menu_id) {
     case TipLangBarCallback::kProperty:
@@ -902,15 +881,15 @@ class TipTextServiceImpl
   // TipLangBarCallback
   STDMETHODIMP OnMenuSelect(ItemId menu_id) override {
     switch (menu_id) {
-      case TipLangBarCallback::kDirect:
-      case TipLangBarCallback::kHiragana:
-      case TipLangBarCallback::kFullKatakana:
-      case TipLangBarCallback::kHalfAlphanumeric:
-      case TipLangBarCallback::kFullAlphanumeric:
-      case TipLangBarCallback::kHalfKatakana: {
-        const commands::CompositionMode mozc_mode = GetMozcMode(menu_id);
-        return TipEditSession::SwitchInputModeAsync(this, mozc_mode);
-      }
+      case TipLangBarCallback::kAplShiftingKeyLeftCtrl:
+      case TipLangBarCallback::kAplShiftingKeyRightCtrl:
+      case TipLangBarCallback::kAplShiftingKeyLeftAlt:
+      case TipLangBarCallback::kAplShiftingKeyRightAlt:
+      case TipLangBarCallback::kAplShiftingKeyCapsLock:
+        // Toggle the checkmark on the selected APL shifting key item.
+        // UI-only for now — no config persistence yet (that's W4).
+        langbar_.ToggleAplShiftingItem(menu_id);
+        return S_OK;
       case TipLangBarCallback::kProperty:
       case TipLangBarCallback::kDictionary:
       case TipLangBarCallback::kWordRegister:

@@ -59,6 +59,13 @@ class TipLangBarCallback : public IUnknown {
 
     // Shortcut commands
     kReconversion = 41,
+
+    // APL shifting key selection
+    kAplShiftingKeyLeftCtrl = 50,
+    kAplShiftingKeyRightCtrl = 51,
+    kAplShiftingKeyLeftAlt = 52,
+    kAplShiftingKeyRightAlt = 53,
+    kAplShiftingKeyCapsLock = 54,
   };
 
   virtual ~TipLangBarCallback() = default;
