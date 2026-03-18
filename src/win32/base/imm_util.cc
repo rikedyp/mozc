@@ -63,7 +63,7 @@ bool ImeUtil::SetDefault() {
     return E_OUTOFMEMORY;
   }
 
-  const std::wstring profile = StrCatW(L"0x0411:", clsid, profile_id);
+  const std::wstring profile = StrCatW(L"0x0409:", clsid, profile_id);
   if (!::InstallLayoutOrTip(profile.c_str(), 0)) {
     DLOG(ERROR) << "InstallLayoutOrTip failed";
     return false;

@@ -62,6 +62,17 @@ message GeneralConfig {
   optional bool upload_usage_stats = 6 [default = false];
 }
 
+message AplShiftingKeySet {
+  optional bool ctrl = 1;         // macOS unified Ctrl
+  optional bool option = 2;       // macOS Option (Alt)
+  optional bool caps_lock = 3;    // shared: macOS + Windows
+
+  optional bool left_ctrl = 10;   // Windows L-Ctrl
+  optional bool right_ctrl = 11;  // Windows R-Ctrl
+  optional bool left_alt = 12;    // Windows L-Alt
+  optional bool right_alt = 13;   // Windows R-Alt
+}
+
 message Config {
   reserved 2 to 9;  // Moved to GeneralConfig
 
@@ -359,6 +370,9 @@ message Config {
   //
   // Use mode indicator feature.
   optional bool use_mode_indicator = 120 [default = true];
+
+  // Use APL shifting key
+  optional AplShiftingKeySet apl_shifting_key_set = 122;
 
   //////////////////////////////////////////////////////////////
   //

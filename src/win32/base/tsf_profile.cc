@@ -71,7 +71,7 @@ static const GUID kMozcProfile = {
 #endif  // GOOGLE_JAPANESE_INPUT_BUILD
 
 // Represents the language ID of this text service.
-const LANGID kTextServiceLanguage = MAKELANGID(LANG_JAPANESE, SUBLANG_DEFAULT);
+const LANGID kTextServiceLanguage = MAKELANGID(LANG_ENGLISH, SUBLANG_DEFAULT);
 
 }  // namespace
 
