@@ -163,8 +163,9 @@ bool ConversionModeUtil::ToNativeMode(mozc::commands::CompositionMode mode,
     case mozc::commands::HIRAGANA:
       *flag = kNative | kFullShape | roman_flag;
       break;
-    case mozc::commands::HALF_KATAKANA:
-      *flag = kNative | kKatakana | roman_flag;
+    case mozc::commands::APL:
+      // APL mode uses the same native flags as Hiragana for IME purposes.
+      *flag = kNative | kFullShape | roman_flag;
       break;
     case mozc::commands::HALF_ASCII:
       // We do set |roman_flag|.
@@ -173,9 +174,6 @@ bool ConversionModeUtil::ToNativeMode(mozc::commands::CompositionMode mode,
     case mozc::commands::FULL_ASCII:
       // We do set |roman_flag|.
       *flag = kAlphaNumeric | kFullShape | roman_flag;
-      break;
-    case mozc::commands::FULL_KATAKANA:
-      *flag = kNative | kKatakana | kFullShape | roman_flag;
       break;
     default:
       LOG(ERROR) << "Unknown composition mode: " << mode;
@@ -216,23 +214,16 @@ bool ConversionModeUtil::ToMozcMode(uint32_t flag,
   bool succeeded = false;
   if (TestAndClearBits(&flag, kNative)) {
     // NATIVE mode
-    if (TestAndClearBits(&flag, kKatakana)) {
-      // KATAKANA mode
-      if (TestAndClearBits(&flag, kFullShape)) {
-        *mode = mozc::commands::FULL_KATAKANA;
-        succeeded = true;
-      } else {
-        *mode = mozc::commands::HALF_KATAKANA;
-        succeeded = true;
-      }
+    // Clear kKatakana if present — Katakana modes are removed,
+    // so we fall back to HIRAGANA for any native mode.
+    TestAndClearBits(&flag, kKatakana);
+    if (TestAndClearBits(&flag, kFullShape)) {
+      *mode = mozc::commands::HIRAGANA;
+      succeeded = true;
     } else {
-      // HIRAGANA mode
-      if (TestAndClearBits(&flag, kFullShape)) {
-        *mode = mozc::commands::HIRAGANA;
-        succeeded = true;
-      } else {
-        LOG(ERROR) << "Half HIRAGANA is not supported";
-      }
+      // Half native without fullshape — map to HIRAGANA as best fit.
+      *mode = mozc::commands::HIRAGANA;
+      succeeded = true;
     }
   } else {
     // ALPHANUMERIC mode

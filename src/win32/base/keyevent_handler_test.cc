@@ -1756,10 +1756,10 @@ TEST_F(KeyEventHandlerTest,
 
   Output mock_output;
   mock_output.set_consumed(true);
-  mock_output.set_mode(commands::FULL_KATAKANA);
+  mock_output.set_mode(commands::HIRAGANA);
   mock_output.mutable_status()->set_activated(true);
-  mock_output.mutable_status()->set_mode(commands::FULL_KATAKANA);
-  mock_output.mutable_status()->set_comeback_mode(commands::FULL_KATAKANA);
+  mock_output.mutable_status()->set_mode(commands::HIRAGANA);
+  mock_output.mutable_status()->set_comeback_mode(commands::HIRAGANA);
 
   MockState mock(mock_output);
   KeyboardMock keyboard(kKanaLocked);

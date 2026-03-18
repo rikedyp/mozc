@@ -475,17 +475,14 @@ class TipUiElementDelegateImpl final : public TipUiElementDelegate {
       case commands::HIRAGANA:
         msg = L"\u3042";
         break;
-      case commands::FULL_KATAKANA:
-        msg = L"\u30AB";
+      case commands::APL:
+        msg = L"APL";
         break;
       case commands::HALF_ASCII:
         msg = L"_A";
         break;
       case commands::FULL_ASCII:
         msg = L"\uFF21";
-        break;
-      case commands::HALF_KATAKANA:
-        msg = L"_\uFF76";
         break;
       default:
         break;
