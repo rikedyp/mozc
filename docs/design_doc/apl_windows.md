@@ -751,10 +751,28 @@ Known Risks and Mitigations
 elsewhere in the TIP code (e.g., `EnsureKanaLockUnlocked()` in `ActivateEx`,
 Japanese-specific keyboard handling in `TipKeyeventHandler`).
 
-*Mitigation*: For the POC, these Japanese-specific code paths become no-ops
-or irrelevant. `EnsureKanaLockUnlocked()` is harmless on an English system.
-The key event handler will still function — it just won't receive Japanese
-composition requests. Dead code can be cleaned up later.
+*Mitigation*: Before changing the language ID, perform an explicit audit of
+every Japanese-specific site in `src/win32/`. Classify each as (a) already
+being changed by this POC, (b) truly harmless no-op under English, or
+(c) needs a guard or early-return to disable safely.
+
+**Audit checklist** (grep `src/win32/` for `0x0411`, `LANG_JAPANESE`,
+`VK_KANA`, `kana`, `Kana`):
+
+| Site | File | Classification |
+|------|------|----------------|
+| `kTextServiceLanguage` constant | `src/win32/base/tsf_profile.cc:74` | (a) changed to `LANG_ENGLISH` in W1 |
+| `"0x0411:"` in `InstallLayoutOrTip` | `src/win32/custom_action/custom_action.cc:327` | (a) changed to `"0x0409:"` in W1 |
+| `"0x0411:"` in `InstallLayoutOrTip` | `src/win32/base/imm_util.cc:66` | (a) changed to `"0x0409:"` in W1 |
+| `TsfProfile::GetLangId()` in `RegisterProfile`/`UnregisterProfile` | `src/win32/base/tsf_registrar.cc:193,222` | (a) reads `kTextServiceLanguage`, picks up W1 change |
+| `EnsureKanaLockUnlocked()` in `ActivateEx` and `OnSetThreadFocus` | `src/win32/tip/tip_text_service.cc:233-239,509,731` | (b) clears `VK_KANA` via `GetKeyboardState`/`SetKeyboardState` — works on all systems, no-op when kana is already unlocked |
+| `IsKanaLocked()` virtual method | `src/win32/base/keyboard.h:128`, `keyboard.cc:90` | (b) returns false on English keyboards — no effect |
+| `IsPressed(VK_KANA)` in modifier index | `src/win32/base/keyboard.cc:1324` | (b) never pressed on English keyboards — no effect |
+| Hiragana/Katakana conversion modes | `src/win32/base/conversion_mode_util.cc` | (b) language-agnostic logic, no language ID check |
+
+No category (c) sites have been identified. All Japanese-specific code
+either gets updated by the language ID change (a) or is a genuine no-op
+under English (b). Dead code cleanup is deferred to post-POC.
 
 **Risk**: `ConfigSnapshot::Get()` is a `static const` one-shot cache — it
 cannot reflect config changes made after startup.

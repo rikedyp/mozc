@@ -1,1 +1,0 @@
-No discussion of the EnsureKanaLockUnlocked and Japanese-specific key handling code paths — The plan says they "become no-ops" under English, but doesn't verify whether any of them check the registered language ID and would error or behave unexpectedly when it's 0x0409 instead of 0x0411.
