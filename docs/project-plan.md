@@ -51,8 +51,7 @@ The protocol buffers (`commands.proto`, `config.proto`) define enums
 whose numeric values are assumed throughout the codebase — 474+
 references to `CompositionMode` values alone across 30+ files, plus
 downstream use in `transliteration.h` (19 references),
-`keymap.cc` (28 references), platform renderers, and iOS/Android
-bridges. The three PoC branches took incompatible approaches: Linux
+`keymap.cc` (28 references), and platform renderers. The three PoC branches took incompatible approaches: Linux
 appended `APL = 6` keeping all Japanese values; Windows repurposed
 `FULL_KATAKANA = 2` as `APL = 2` and deleted `HALF_KATAKANA`.
 
@@ -69,8 +68,9 @@ deleting code, because every subsequent step depends on it:
 - **Trace every reference** to removed/renumbered enum values across
   the codebase — session, keymap, transliteration, composer,
   platform clients (IBus, IMK, TSF), renderer, config dialog, and
-  tests. Produce a reference map so that subsequent deletion in 0.3
-  and platform work in Phase 1 can proceed safely.
+  tests. Produce a reference map so that subsequent deletion in 0.3,
+  Android removal in 0.4, and platform work in Phase 1 can proceed
+  safely.
 - **Decide on wire compatibility**: since this is a fork (not a
   rolling update to deployed Mozc), proto field numbers and enum
   values can be freely renumbered. There is no need to preserve
@@ -115,17 +115,48 @@ best patterns from each:
   Japanese predictor used to live — so the shell is not dead code but
   load-bearing infrastructure for keyword search and idiom completion.
 
-### 0.4 Remove redundant dependencies and submodules
+### 0.4 Remove Android support
+The APL IME is desktop-only (Linux, macOS, Windows). All Android code,
+build infrastructure, and conditional paths must be removed:
+
+- **Delete `src/android/`** — JNI wrappers (`mozcjni.cc`),
+  cross-compilation rules (`cross_build_binary.bzl`), packaging scripts
+  (`make_archive.py`), and keyboard data (`collected_keyboards.csv`)
+- **Delete Android-specific source files** — `src/base/android_util.h`,
+  `android_util.cc`, and `android_util_test.cc`
+- **Remove Android build infrastructure**:
+  - `rules_android_ndk` dependency and toolchain registration from
+    `src/MODULE.bazel`
+  - `src/bazel/android_repository.bzl` and
+    `src/bazel/rules_android_ndk.patch`
+  - Android config settings from `src/bazel/cc_target_os/BUILD.bazel`
+    (`android`, `oss_android`, `prod_android`)
+  - Android configs and `--build_tag_filters` from `src/.bazelrc`
+  - `MOZC_TAGS.ANDROID_ONLY` and `android` parameter from
+    `src/build_defs.bzl` / `mozc_select()`
+  - NDK download entries from `src/build_tools/update_deps.py`
+- **Remove Android CI** — delete `.github/workflows/android.yaml`
+- **Clean up proto files** — remove `java_package` options from
+  `commands.proto`, `config.proto`, `candidate_window.proto`,
+  `engine_builder.proto`, and `user_dictionary_storage.proto`; remove
+  Android-specific fields and enums (twelve-key/flick input tables,
+  `DecoderExperimentParams`, Android-only command types)
+- **Remove `#ifdef __ANDROID__` / `OS_ANDROID` guards** from ~34 shared
+  source files across base/, config/, converter/, ipc/, renderer/,
+  rewriter/, and session/
+- **Delete Android documentation** — `docs/build_mozc_for_android.md`;
+  remove Android references from `docs/about_branding.md`
+
+### 0.5 Remove redundant dependencies and submodules
 - Delete all GYP-era git submodules (already unused in Bazel builds)
 - Remove Japanese Usage Dictionary and Japan Post zip code data from
   `MODULE.bazel`
-- Drop Android NDK fetch from `update_deps.py` (desktop-only product)
 - Rewrite macOS ObjC tests to remove dependency on Google Toolbox for
   Mac's UnitTesting component (keep Google Toolbox for Mac as a test
   framework dependency)
 - Replace Material Design Icons with APL-relevant icons
 
-### 0.5 Rebrand and re-register
+### 0.6 Rebrand and re-register
 - Change product name from "Mozc" to the APL IME product name throughout
   source, installers, and OS registrations
 - Register as English (not Japanese) input method on all platforms
@@ -345,13 +376,13 @@ and expression completion.
 | Japan Post zip code data | 0.3 |
 | IPAdic / NAIST dictionary | 0.3 |
 | Tamachi Phonetic Kanji | 0.3 |
-| Android NDK (default fetch) | 0.4 |
-| All GYP git submodules | 0.4 |
+| Android support (NDK, JNI, build rules, conditional code) | 0.4 |
+| All GYP git submodules | 0.5 |
 
 ### Replace
 | Dependency | Replacement | Phase |
 |---|---|---|
-| Material Design Icons | APL-specific icons | 0.4 |
+| Material Design Icons | APL-specific icons | 0.5 |
 | Japanese preedit tables | APL prefix/overstrike tables | 2.1, 3.1 |
 | Japanese keymap tables | APL keymap tables | 0.3 |
 

@@ -76,7 +76,7 @@ Fetched by Bazel:
 
 ## Android NDK
 
-`update_deps.py` downloads Android NDK r29 on Linux and macOS by default. The NDK provides the cross-compilation toolchain (Clang for ARM/x86 Android targets) needed to build Mozc's C++ core as a native library for Android. This is only needed for Android builds and can be skipped with the `--nondk` flag.
+`update_deps.py` downloads Android NDK r29 on Linux and macOS by default. The NDK provides the cross-compilation toolchain (Clang for ARM/x86 Android targets) needed to build Mozc's C++ core as a native library for Android. This is only needed for Android builds and can be skipped with the `--nondk` flag. Android is not a target platform for the APL edition.
 
 ## APL Edition Dependency Changes
 
@@ -87,12 +87,22 @@ Fetched by Bazel:
 | **Japanese Usage Dictionary** | Japanese word usage examples for ranking candidates. An APL IME has no use for this. Only referenced during dataset compilation. |
 | **Japan Post zip code data** | Japanese postal code lookup. Entirely optional (gated by a config flag). No relevance to APL. |
 
+### Clearly removable (Android — not a target platform)
+
+| Dependency | Reason |
+|---|---|
+| **Android NDK** | Already skippable with `--nondk`. Not needed for desktop-only APL edition. |
+| **rules_android_ndk** | Bazel ruleset for Android NDK toolchain configuration. |
+| **`src/android/`** | JNI wrappers, cross-compilation rules, and packaging scripts for Android builds. |
+| **Android CI workflow** | `.github/workflows/android.yaml` — builds and tests Android targets. |
+
+Additionally, ~34 shared source files contain `#ifdef __ANDROID__` / `OS_ANDROID` conditional code paths and 5 proto files contain `java_package` options and Android-specific fields that should be removed.
+
 ### Likely removable (not needed for APL use case)
 
 | Dependency | Reason |
 |---|---|
 | **Google Toolbox for Mac** | Only used for macOS Objective-C unit tests. Can be dropped if you don't run those specific tests. |
-| **Android NDK** | Already skippable with `--nondk`. Not needed for desktop-only APL edition. |
 | **breakpad** | GYP-only; already absent from the Bazel build. No action needed. |
 
 ### Replaceable but not removable
