@@ -306,8 +306,22 @@ Differences from macOS Implementation
 
 ---
 
-Phase 1 Plan: Windows POC
-===========================
+Phase 1 Plan: Windows POC (Revised)
+======================================
+
+> **Revision note (2026-03-24)**: This replaces the original plan. The first
+> attempt (on `windows-poc` branch, commits `8b1bbd24f`–`cc1ca8d09`) broke
+> the build by modifying `commands.proto` (`FULL_KATAKANA→APL`, removing
+> `HALF_KATAKANA`), which cascaded into ~15 files across all platforms. This
+> revision **leaves `commands.proto` untouched** — the APL shifting key
+> feature bypasses the Mozc composition pipeline entirely (it reads
+> `InputBehavior` fields and inserts glyphs directly). This eliminates the
+> cascade entirely.
+>
+> Other improvements:
+> - File logging (`c:\tmp\mozc_apl_debug.log`) at every step for verification
+> - Exhaustive cross-reference of all code sites affected by each change
+> - ~20 files total (vs. 28 in the previous attempt)
 
 **Goal**: Mozc installs as an English-only "Mozc APL" input method on Windows.
 The system tray shows an "APL Shifting Key" menu with five checkable modifier
@@ -315,15 +329,43 @@ options. Toggling items persists to config and survives IME restarts. Holding
 a configured shifting key while pressing a character key inserts the
 corresponding APL glyph.
 
-**Baseline**: Current `windows-poc` branch (from `master`). No APL-related
-code exists yet.
+**Baseline**: Current `master` branch. No APL-related code exists.
+
+### Debug logging
+
+All steps use a shared `AplLog()` utility introduced in W3. It writes to
+`c:\tmp\mozc_apl_debug.log` (append mode) and also calls
+`OutputDebugStringA` for DebugView. Each log line is prefixed with the step
+(e.g., `W3:`, `W4:`, `W5:`) so that verification can grep for specific
+steps.
+
+New file `src/win32/tip/apl_log.h`:
+
+```cpp
+#ifndef MOZC_WIN32_TIP_APL_LOG_H_
+#define MOZC_WIN32_TIP_APL_LOG_H_
+#include <cstdio>
+#include <cstdarg>
+#include <windows.h>
+namespace mozc::win32::tsf {
+inline void AplLog(const char* fmt, ...) {
+  char buf[512];
+  va_list args;
+  va_start(args, fmt);
+  vsnprintf(buf, sizeof(buf), fmt, args);
+  va_end(args);
+  FILE* f = fopen("c:\\tmp\\mozc_apl_debug.log", "a");
+  if (f) { fprintf(f, "%s\n", buf); fclose(f); }
+  OutputDebugStringA(buf);
+  OutputDebugStringA("\n");
+}
+}  // namespace mozc::win32::tsf
+#endif
+```
 
 ### Implementation order rationale
 
-Following the macOS experience, we build incrementally. Each step is
-independently testable. The risk profile is:
-
-- W1 is proto changes (config + CompositionMode) — testable via build success
+- W1 is proto changes (config only, NOT commands.proto) — testable via build
 - W2 is a registration change — testable via install + Settings UI
 - W3 is language bar menu — visible in system tray, no behavioral change
 - W4 is config wiring — menu toggles persist, no key handling changes
@@ -332,13 +374,14 @@ independently testable. The risk profile is:
 
 W5 comes after W4 because the key intercept reads the cached config fields
 (which shifting key is active) that W4 wires up. W6 is last because the
-installer is a "full stack" smoke test — it should verify the complete
-feature, including glyph production.
+installer is a "full stack" smoke test.
 
-### Step W1: Proto changes (no behavioral change)
+---
 
-**1a. Config proto** — Add the `AplShiftingKeySet` message and field 122 to
-`config.proto`:
+### Step W1: Config proto (no behavioral change)
+
+Add the `AplShiftingKeySet` message and field 122 to `config.proto`.
+**Do NOT modify `commands.proto`.**
 
 ```proto
 message AplShiftingKeySet {
@@ -358,34 +401,18 @@ On `Config`:
 optional AplShiftingKeySet apl_shifting_key_set = 122;
 ```
 
-**1b. CompositionMode** — Repurpose the Japanese-only modes for APL. In
-`commands.proto`, replace the unused Japanese modes:
-
-```proto
-enum CompositionMode {
-  DIRECT = 0;
-  HIRAGANA = 1;       // unused in APL POC, kept for value stability
-  APL = 2;            // was FULL_KATAKANA
-  HALF_ASCII = 3;
-  FULL_ASCII = 4;
-  // HALF_KATAKANA (5) removed
-  NUM_OF_COMPOSITIONS = 6;  // unchanged
-}
-```
-
-This avoids adding `APL = 6` (as the macOS branch did) and the cascade of
-array-size changes that would follow. Safe for a throwaway POC that will
-never merge with the macOS branch. `HIRAGANA` and the ASCII modes are kept
-to avoid breaking code that references them by value — they just become
-dead paths that the APL TIP never enters.
-
 **Files changed**:
 - `src/protocol/config.proto`
-- `src/protocol/commands.proto`
 
-**Test**: Build succeeds. Proto generates correctly. Existing Mozc behavior
-unaffected (config field is optional, CompositionMode values 0/1/3/4 are
-unchanged).
+**Cross-reference**: Field 122 is new — nothing references it yet. No
+cascading changes needed. Field 121 is unused. Field 120 is
+`use_mode_indicator`. No conflict.
+
+**Logging**: None (proto-only step).
+
+**Test**: Build succeeds. No runtime change.
+
+---
 
 ### Step W2: English registration (replace Japanese with APL)
 
@@ -394,24 +421,44 @@ name. This is the minimal change set to make Mozc appear as an English input
 method.
 
 **Files changed**:
-- `src/win32/base/tsf_profile.cc` — change `kTextServiceLanguage` from
-  `MAKELANGID(LANG_JAPANESE, SUBLANG_DEFAULT)` to
-  `MAKELANGID(LANG_ENGLISH, SUBLANG_DEFAULT)`
-- `src/win32/tip/tip_resource.rc` — change display name strings from `"Mozc"`
-  to `"Mozc APL"` (both `IDS_IME_DISPLAYNAME` and
-  `IDS_TEXTSERVICE_DISPLAYNAME_SYNONYM`)
-- `src/win32/custom_action/custom_action.cc` — change `0x0411` to `0x0409` in
-  `EnableTipProfile`
 
-**Test**: Build, install, open Windows Settings → Time & Language → Language →
-English → Keyboard. "Mozc APL" appears as an available input method. The
-system tray input indicator shows "Mozc APL" when selected. Switching to
-Mozc APL activates the TIP (it will show the existing Japanese menus for now —
-that's expected and will be replaced in W3).
+| File | Line | Change |
+|------|------|--------|
+| `src/win32/base/tsf_profile.cc` | 74 | `MAKELANGID(LANG_JAPANESE, SUBLANG_DEFAULT)` → `MAKELANGID(LANG_ENGLISH, SUBLANG_DEFAULT)` |
+| `src/win32/tip/tip_resource.rc` | 148-149 | `"Mozc"` → `"Mozc APL"` (Japanese string table, Mozc build) |
+| `src/win32/tip/tip_resource.rc` | 191-192 | `"Mozc"` → `"Mozc APL"` (English string table, Mozc build) |
+| `src/win32/custom_action/custom_action.cc` | 328 | `"0x0411:"` → `"0x0409:"` in `EnableTipProfile` |
+| `src/win32/base/imm_util.cc` | 66 | `"0x0411:"` → `"0x0409:"` in `SetDefault` |
+| `src/win32/base/imm_util.cc` | 91 | `MAKELANGID(LANG_JAPANESE, SUBLANG_JAPANESE_JAPAN)` → `MAKELANGID(LANG_ENGLISH, SUBLANG_ENGLISH_US)` |
+
+**Exhaustive cross-reference** of all `0x0411` / `LANG_JAPANESE` sites in
+`src/win32/`:
+
+| Site | File:Line | Impact |
+|------|-----------|--------|
+| `kTextServiceLanguage` | `tsf_profile.cc:74` | **Changed** |
+| `TsfProfile::GetLangId()` | `tsf_profile.cc:94` | Returns constant — auto-updated |
+| `"0x0411:"` in `EnableTipProfile` | `custom_action.cc:328` | **Changed** |
+| `"0x0411:"` in `SetDefault` | `imm_util.cc:66` | **Changed** |
+| `LANG_JAPANESE` in `ActivateProfile` | `imm_util.cc:91` | **Changed** |
+| `RegisterProfiles`/`UnregisterProfile` | `tsf_registrar.cc:193,222` | Uses `GetLangId()` — auto-updated |
+| `EnsureKanaLockUnlocked` | `tip_text_service.cc:233-239,509,731` | No-op on English — safe |
+| `IsKanaLocked` | `keyboard.h:128, keyboard.cc:90` | Returns false on English — safe |
+| `IsPressed(VK_KANA)` | `keyboard.cc:1324` | Never pressed on English — safe |
+| `conversion_mode_util.cc` | all | Language-agnostic — safe |
+| `LANGUAGE LANG_JAPANESE` | `tip_resource.rc:142` | RC directive — still compiles, cosmetic |
+
+**Logging**: None (W2 is a registration change, no runtime code paths to log).
+
+**Test**: Build, install. Windows Settings → Language → English → Keyboard
+shows "Mozc APL". System tray shows "Mozc APL".
+
+---
 
 ### Step W3: APL shifting key language bar menu (UI only)
 
 Replace the Japanese input mode menu with the APL shifting key menu.
+Introduce `AplLog()` utility.
 
 **Why `TipLangBarMenuButton`, not `TipLangBarToggleButton`**:
 The existing `TipLangBarToggleButton` hard-codes radio-select semantics — a
@@ -425,30 +472,62 @@ just delegates to the callback. This makes multi-select trivial: set or clear
 `TF_LBMENUF_CHECKED` on the item's `flags_` field, then call `OnUpdate` to
 refresh the menu.
 
-**Files changed**:
-- `src/win32/tip/tip_lang_bar_callback.h` — add `kAplShiftingKeyLeftCtrl`
-  through `kAplShiftingKeyCapsLock` to `ItemId` enum (IDs 50-54)
-- `src/win32/tip/tip_lang_bar.h` — replace `input_button_menu_` and
-  `input_mode_button_for_win8_` (both `TipLangBarToggleButton`) with a single
-  `apl_shifting_button_` of type `TipLangBarMenuButton`
-- `src/win32/tip/tip_lang_bar.cc`:
-  - Replace input mode menu item arrays with APL shifting key items, using
-    `kTipLangBarItemTypeDefault` (unchecked initially)
-  - Remove Japanese composition mode items (Direct, Hiragana, etc.)
-  - `UpdateMenu()` sets `TF_LBMENUF_CHECKED` on each item's `flags_` field
-    based on the current shifting key state, then calls `OnUpdate`
-- `src/win32/tip/tip_text_service.cc`:
-  - `OnMenuSelect` callback: for APL item IDs, toggle the item's
-    `TF_LBMENUF_CHECKED` flag directly on its `TipLangBarMenuData::flags_`
-    (stub: no config persistence yet, just visual toggle)
-  - Remove or stub out Japanese input mode switch logic in `OnMenuSelect`
-  - `UpdateLangbar()`: adapted for checkmark-based menu
+**New file**: `src/win32/tip/apl_log.h` (see "Debug logging" above)
 
-**Resource strings** (in `tip_resource.rc`):
-- Add string IDs: `IDS_APL_SHIFTING_LEFT_CTRL`, `IDS_APL_SHIFTING_RIGHT_CTRL`,
-  `IDS_APL_SHIFTING_LEFT_ALT`, `IDS_APL_SHIFTING_RIGHT_ALT`,
-  `IDS_APL_SHIFTING_CAPS_LOCK` with values "Left Ctrl", "Right Ctrl",
-  "Left Alt", "Right Alt", "Caps Lock"
+**Files changed**:
+
+| File | Change |
+|------|--------|
+| `src/win32/tip/tip_lang_bar_callback.h` | Add `kAplShiftingKeyLeftCtrl`(50)–`kAplShiftingKeyCapsLock`(54) to `ItemId` enum |
+| `src/win32/tip/tip_resource.h` | Add `IDS_APL_SHIFTING_KEY`(140)–`IDS_APL_SHIFTING_CAPS_LOCK`(145) |
+| `src/win32/tip/tip_resource.rc` | Add string values in both Japanese and English string tables |
+| `src/win32/tip/tip_lang_bar_menu.h` | Add public `ToggleItemCheckmark(UINT item_id)` to `TipLangBarMenuButton` |
+| `src/win32/tip/tip_lang_bar_menu.cc` | Implement `ToggleItemCheckmark`: iterate menu data, XOR `TF_LBMENUF_CHECKED`, call `OnUpdate` |
+| `src/win32/tip/tip_lang_bar.h` | Replace `input_button_menu_` with `apl_shifting_button_` (`TipLangBarMenuButton`). Keep `input_mode_button_for_win8_` for system tray icon. Add `ToggleAplShiftingItem(UINT)`. |
+| `src/win32/tip/tip_lang_bar.cc` | Major rewrite of `InitLangBar()`, `UninitLangBar()`, `UpdateMenu()`, `IsInitialized()` (see below) |
+| `src/win32/tip/tip_text_service.cc` | Replace Japanese mode cases in `OnMenuSelect` with APL cases. Remove `GetMozcMode()`. |
+| `src/win32/tip/BUILD.bazel` | Add `apl_log` header dep |
+
+**Detail: `tip_lang_bar.cc` changes**:
+
+- Remove `GetItemId()` function (lines 111-129) — no longer needed
+- Remove `input_button_menu_` creation block (lines 157-194)
+- Modify `input_mode_button_for_win8_` block: replace Japanese menu items
+  with APL shifting key items + separator + tool/help items (merged tray menu
+  — required for system tray icon to appear)
+- Add new `apl_shifting_button_` block using `TipLangBarMenuButton` with 5
+  APL items (standalone language bar button)
+- `UninitLangBar()`: replace `input_button_menu_` cleanup with
+  `apl_shifting_button_`
+- `UpdateMenu()`: stub for now (just enable/disable), will be enhanced in W4
+- `IsInitialized()`: check `input_mode_button_for_win8_` (not removed)
+- Add `ToggleAplShiftingItem()` delegating to
+  `apl_shifting_button_->ToggleItemCheckmark()`
+
+**Detail: `tip_text_service.cc` changes**:
+
+- Remove `GetMozcMode()` (lines 192-211)
+- In `OnMenuSelect` (line 903): replace cases for `kDirect`/`kHiragana`/
+  `kFullKatakana`/`kHalfAlphanumeric`/`kFullAlphanumeric`/`kHalfKatakana`
+  with cases for `kAplShiftingKeyLeftCtrl`–`kAplShiftingKeyCapsLock`.
+  W3 handler: call `langbar_.ToggleAplShiftingItem(menu_id)`.
+
+**Exhaustive cross-reference of all removed/changed symbols**:
+
+| Symbol | Sites | Action |
+|--------|-------|--------|
+| `input_button_menu_` | `tip_lang_bar.h:82`, `tip_lang_bar.cc:157-194,332-334,361,363,370` | Replaced with `apl_shifting_button_` |
+| `GetItemId()` | `tip_lang_bar.cc:111-129,360` | Removed |
+| `GetMozcMode()` | `tip_text_service.cc:192-211,911` | Removed |
+| `kDirect..kHalfKatakana` in `OnMenuSelect` | `tip_text_service.cc:905-913` | Replaced with APL cases |
+| `SwitchInputModeAsync` call | `tip_text_service.cc:912` | Removed from these cases |
+
+**Logging**:
+```
+AplLog("W3: InitLangBar - APL shifting button created");
+AplLog("W3: InitLangBar - tray menu created with APL items");
+AplLog("W3: OnMenuSelect item_id=%d", menu_id);
+```
 
 **Menu structure**:
 ```
@@ -460,75 +539,73 @@ APL Shifting Key ▸
   ☐ Caps Lock
 ```
 
-**Checkmark toggle flow** (W3 is UI-only; config persistence is added in W4):
-```
-User clicks "Right Ctrl"
-  → TipLangBarMenuButton::OnMenuSelect(index)
-    → callback->OnMenuSelect(kAplShiftingKeyRightCtrl)
-      → toggle TF_LBMENUF_CHECKED on that item's TipLangBarMenuData::flags_
-      → apl_shifting_button_->OnUpdate(TF_LBI_STATUS)
-  → next InitMenu call reads updated flags_, shows checkmark
-```
+**Test**: Install, switch to Mozc APL. Click system tray icon — menu with 5
+APL items appears. Click to toggle checkmarks (UI-only). Check
+`c:\tmp\mozc_apl_debug.log` for W3 entries.
 
-**Test**: Install, switch to Mozc APL. Click the system tray icon. The "APL
-Shifting Key" menu appears with five items. Clicking items toggles checkmarks
-(visual only for now — no config persistence yet). Multiple items can be
-checked simultaneously. The old Japanese input mode menu (Direct / Hiragana /
-etc.) no longer appears.
+---
 
 ### Step W4: Config wiring (shifting key persistence)
 
 Wire the menu toggles to read/write `config.proto` field 122 via the Mozc
-server.
+server, and populate `InputBehavior` from config at startup.
 
 **Files changed**:
-- `src/win32/base/input_state.h` — add APL shifting key fields to
-  `InputBehavior`
-- `src/win32/base/config_snapshot.h` — add APL shifting key fields to `Info`
-  (for initial load only)
-- `src/win32/base/config_snapshot.cc` — populate from
-  `config.apl_shifting_key_set()`
-- `src/win32/tip/tip_private_context.cc` — `EnsureInitialized()` copies
-  snapshot APL fields into `InputBehavior`
-- `src/win32/tip/tip_text_service.cc` — `OnMenuSelect` for APL items: read
-  config via client → toggle field → write config → update `InputBehavior`
-  directly → update menu checkmarks
-- `src/win32/tip/tip_lang_bar.cc` — `UpdateMenu` reads `InputBehavior` to set
-  checkmark state on each item
+
+| File | Change |
+|------|--------|
+| `src/win32/base/input_state.h` (line 56) | Add 5 bool fields to `InputBehavior`: `apl_shifting_left_ctrl`, `right_ctrl`, `left_alt`, `right_alt`, `caps_lock` (all `= false`) |
+| `src/win32/base/config_snapshot.h` (line 42) | Add same 5 fields to `Info` |
+| `src/win32/base/config_snapshot.cc` | In `GetConfigSnapshotImpl()`: read `config->apl_shifting_key_set()`. In `Get()`: copy to `Info*`. In `Info::Info()`: init to false. |
+| `src/win32/tip/tip_private_context.cc` (line 80) | In `EnsureInitialized()`: copy 5 snapshot fields → `InputBehavior` |
+| `src/win32/tip/tip_text_service.cc` | Enhance `OnMenuSelect` APL cases: `GetFocusedPrivateContext()` → `GetClient()` → `GetConfig/SetConfig` to persist. Update `InputBehavior` directly. Then toggle checkmark. |
+| `src/win32/tip/tip_lang_bar.cc` | `UpdateMenu()`: accepts `InputBehavior`, sets checkmarks from its fields |
+| `src/win32/tip/tip_lang_bar.h` | Update `UpdateMenu` to accept `InputBehavior` or equivalent |
 
 **Config read path** (startup):
 ```
 TipPrivateContext::EnsureInitialized()
-  → ConfigSnapshot::Get(&snapshot)         // one-shot read from disk
+  → ConfigSnapshot::Get(&snapshot)
     → config.apl_shifting_key_set().left_ctrl() etc.
-    → populate snapshot.apl_shifting_* fields
-  → behavior->apl_shifting_left_ctrl = snapshot.apl_shifting_left_ctrl  // copy into live state
-  → ... (same for all five fields)
-  → TipLangBar::UpdateMenu() sets checkmark flags from InputBehavior
+  → behavior->apl_shifting_left_ctrl = snapshot.apl_shifting_left_ctrl
+  → ... (all 5 fields)
 ```
 
 **Config write path** (menu toggle):
 ```
-User clicks menu item
-  → OnMenuSelect(kAplShiftingKeyRightCtrl)
-    → client->GetConfig(&config)
-    → config.mutable_apl_shifting_key_set()->set_right_ctrl(!current)
-    → client->SetConfig(config)                              // persist to disk via server
-    → private_context->mutable_input_behavior()
-        ->apl_shifting_right_ctrl = !current                 // immediate update to live state
-    → TipLangBar::UpdateMenu() refreshes checkmarks from InputBehavior
+OnMenuSelect(kAplShiftingKeyRightCtrl)
+  → GetFocusedPrivateContext() → GetClient()
+  → client->GetConfig(&config)
+  → config.mutable_apl_shifting_key_set()->set_right_ctrl(!current)
+  → client->SetConfig(config)               // persist via server
+  → mutable_input_behavior()->apl_shifting_right_ctrl = !current
+  → langbar_.ToggleAplShiftingItem(menu_id)  // visual update
 ```
 
-Note: `ConfigSnapshot::Get()` is only used for the initial load — it is a
-`static const` cache with no refresh mechanism. All runtime reads go through
-`InputBehavior`, which the menu handler updates directly after `SetConfig`.
-This mirrors the macOS approach where `handleConfig` updates ivars
-(`aplShiftingKeyCtrl_` etc.) immediately after `SetConfig`.
+**Cross-reference of `InputBehavior` readers** (must be safe with new fields):
 
-**Test**: Install, switch to Mozc APL. Toggle "Right Ctrl" in the menu. Close
-and reopen the menu — checkmark persists. Restart the IME (switch away and
-back, or restart the app) — checkmark still persists. Toggle multiple items
-simultaneously (e.g., Right Ctrl + Caps Lock both checked).
+| Site | File:Line | Impact |
+|------|-----------|--------|
+| `OnTestKey` | `tip_keyevent_handler.cc:241` | Copies by value — new fields copied but ignored. Safe. |
+| `OnKey` | `tip_keyevent_handler.cc:410` | Same. Safe. |
+| `ImeProcessKey` | `keyevent_handler.cc` | Only reads existing fields. Safe. |
+| `ImeToAsciiEx` | `keyevent_handler.cc` | Same. Safe. |
+| `GetOpenAndMode` | `tip_keyevent_handler.cc:107` | Only reads `prefer_kana_input`. Safe. |
+
+**Cross-reference of `UpdateMenu` callers**:
+- `tip_text_service.cc` `UpdateLangbar()` (~line 977) — needs signature update
+
+**Logging**:
+```
+AplLog("W4: EnsureInitialized left_ctrl=%d right_ctrl=%d left_alt=%d right_alt=%d caps=%d", ...);
+AplLog("W4: OnMenuSelect item=%d toggled to %d", menu_id, new_val);
+AplLog("W4: SetConfig succeeded");
+```
+
+**Test**: Toggle "Right Ctrl", close/reopen menu — persists. Restart IME —
+still persists. Check log for W4 entries.
+
+---
 
 ### Step W5: APL glyph production (behavioral change)
 
@@ -536,55 +613,31 @@ Intercept key events when a configured shifting key is held, look up the APL
 glyph, and insert it directly — consuming the keystroke before the application
 sees it.
 
-**5a. Virtual key → character mapping** — New file `src/win32/tip/win32_vk_to_char.h`:
+**5a. Virtual key → character mapping** — New file
+`src/win32/tip/win32_apl_key_handler.h`:
 
 ```cpp
 // Returns the US QWERTY character for a Win32 virtual key code.
-// Letters (VK_A–VK_Z) map to 'a'–'z'. Digits (VK_0–VK_9) map to '0'–'9'.
-// Symbol keys (VK_OEM_*) map to their unshifted US QWERTY character.
-// Returns '\0' for unmapped keys (function keys, modifiers, etc.).
 char Win32VKToChar(WPARAM vk);
 
 // Returns the US QWERTY shifted character for a base character.
-// 'a'→'A', '1'→'!', '['→'{', etc.
 char ShiftedChar(char base);
+
+// Checks if any configured APL shifting key is currently held down.
+bool IsAplShiftingKeyHeld(const InputBehavior& behavior);
+
+// Given a VK code and shift state, look up the APL glyph.
+// Returns a UTF-16 wstring (empty if no mapping).
+std::wstring GetAplGlyphForVK(WPARAM vk, bool shift_held,
+                               const InputBehavior& behavior);
 ```
 
-This is the Windows equivalent of `src/mac/apl_keycode_map.h`. Simpler for
-letters/digits (sequential VK codes map directly) but needs a table for
-`VK_OEM_*` symbol keys. `ShiftedChar` is the same logic as the macOS version.
+`Win32VKToChar`: VK_A–VK_Z → 'a'–'z', VK_0–VK_9 → '0'–'9',
+VK_OEM_* → US QWERTY lookup table.
 
-**5b. Key intercept in `OnTestKeyDown` / `OnKeyDown`** — The intercept goes
-in `TipKeyeventHandler` (or a new helper called from it) and runs before the
-existing Mozc key processing:
-
-```
-OnKeyDown(vk, lParam):
-  if no shifting key configured → fall through to normal Mozc path
-  if shifting key is held (GetKeyState check):
-    base_char = Win32VKToChar(vk)
-    if base_char == '\0' → fall through (non-character key)
-    if Shift is also held:
-      shifted = ShiftedChar(base_char)
-      glyph = GetAplShiftedGlyph(shifted)
-    else:
-      glyph = GetAplGlyph(base_char)
-    if glyph found:
-      insert glyph via ITfInsertAtSelection / ITfRange
-      return eaten=TRUE
-    fall through (key has no APL mapping)
-  fall through to normal Mozc path
-```
-
-The `GetAplGlyph` / `GetAplShiftedGlyph` functions are cherry-picked from
-`src/session/apl_keymap.h` (same as macOS M5).
-
-**Modifier detection** — Check which shifting key is held, reading from the
-live `InputBehavior` (available via `private_context->input_behavior()` in the
-key event handler):
-
+`IsAplShiftingKeyHeld`:
 ```cpp
-bool IsShiftingKeyHeld(const InputBehavior& behavior) {
+bool IsAplShiftingKeyHeld(const InputBehavior& behavior) {
   if (behavior.apl_shifting_left_ctrl  && (GetKeyState(VK_LCONTROL) & 0x8000)) return true;
   if (behavior.apl_shifting_right_ctrl && (GetKeyState(VK_RCONTROL) & 0x8000)) return true;
   if (behavior.apl_shifting_left_alt   && (GetKeyState(VK_LMENU)   & 0x8000)) return true;
@@ -594,85 +647,118 @@ bool IsShiftingKeyHeld(const InputBehavior& behavior) {
 }
 ```
 
-Note: Caps Lock uses `& 0x8000` (key currently pressed), not `& 0x0001`
-(toggle state / LED on). Caps Lock is a while-held modifier, the same as Ctrl
-and Alt — the user holds it down, types APL glyphs, and releases it. Toggle
-states and prefix-key input (e.g., backtick as an APL dead key) are future
-work, not part of this design.
+Caps Lock uses `& 0x8000` (key currently pressed), not `& 0x0001`
+(toggle state / LED on). This is a while-held modifier.
 
-**5c. Caps Lock key-event suppression** — TODO: Investigate whether the TIP
-can eat the `VK_CAPITAL` keydown/keyup in `OnTestKeyDown`/`OnKeyUp` to
-suppress the system Caps Lock toggle behaviour when Caps Lock is configured as
-an APL shifting key and APL mode is active. The goal is to let the user hold
-Caps Lock purely as a modifier without the LED toggling or the system entering
-Caps Lock state. Determine:
-- Whether eating `VK_CAPITAL` in `OnTestKeyDown` (returning `eaten=TRUE`)
-  reliably prevents the toggle on both keydown and keyup across Win32 and UWP
-  apps
-- Whether `OnKeyUp` also needs to eat `VK_CAPITAL` to fully suppress the
-  toggle (some apps toggle on keyup rather than keydown)
-- Whether there are timing or focus-change edge cases where the toggle leaks
-  through despite eating the key
-- Whether the Caps Lock LED state can desync from what the system believes
-  (e.g., after a focus change to a non-TSF app) and how to handle that
+**5b. Key intercept in `OnTestKeyDown` / `OnKeyDown`** — The intercept goes
+at the top of `OnTestKey()` and `OnKey()` in `tip_keyevent_handler.cc`,
+immediately after getting `private_context`, BEFORE all existing Mozc key
+processing:
 
-**5d. Left Alt bare-press suppression** — When Left Alt is a shifting key,
-releasing Alt without a character key press would activate the menu bar in
-Win32 apps. The TIP suppresses this by eating `VK_LMENU` keyup in `OnKeyUp`
-when APL mode is active and Left Alt is configured as a shifting key. This
-matches the Linux branch's approach.
+```
+OnTestKey: (decides whether to eat the key)
+  if is_key_down && shifting key held:
+    glyph = GetAplGlyphForVK(vk, shift_held, behavior)
+    if glyph found → *eaten = TRUE; return
+  if vk == VK_CAPITAL && caps_lock configured → *eaten = TRUE; return
+  ... normal Mozc path ...
 
-**5e. Text insertion** — TSF text insertion uses `ITfInsertAtSelection`:
-
-```cpp
-// Simplified — real code needs ITfContext, ITfEditSession, etc.
-void InsertAplGlyph(ITfContext* context, const wchar_t* glyph) {
-  // Request an edit session
-  // In the session: ITfInsertAtSelection::InsertTextAtSelection(
-  //   ec, context, TF_IAS_NOQUERY, glyph, wcslen(glyph), nullptr);
-}
+OnKey: (actually processes the key)
+  if is_key_down && shifting key held:
+    glyph = GetAplGlyphForVK(vk, shift_held, behavior)
+    if glyph found → insert via TSF; *eaten = TRUE; return
+  if vk == VK_CAPITAL && caps_lock configured → *eaten = TRUE; return
+  if !is_key_down && vk == VK_LMENU && left_alt configured → *eaten = TRUE; return
+  ... normal Mozc path ...
 ```
 
-The glyph strings from `apl_keymap.h` are UTF-8 `string_view`; they need
-conversion to UTF-16 (`wchar_t`) for TSF. Since APL glyphs are all BMP
-characters (U+0000–U+FFFF), each is a single `wchar_t` — no surrogate pairs.
+**5c. Caps Lock suppression** — Eat `VK_CAPITAL` keydown/keyup when Caps
+Lock is configured as shifting key. TSF delivers `VK_CAPITAL` before the
+toggle takes effect; returning `eaten=TRUE` suppresses the toggle.
 
-**Files changed**:
-- `src/win32/tip/win32_vk_to_char.h` (new) — VK code → char mapping
-- `src/win32/tip/win32_vk_to_char.cc` (new) — implementation
-- `src/session/apl_keymap.h` (cherry-pick from macOS/Linux branch)
-- `src/session/apl_keymap.cc` (cherry-pick from macOS/Linux branch)
-- `src/session/BUILD.bazel` — add `apl_keymap` rule
-- `src/win32/tip/BUILD.bazel` — add `win32_vk_to_char` rule, add
-  `//session:apl_keymap` dep to TIP
-- `src/win32/tip/tip_keyevent_handler.cc` — APL intercept before normal
-  Mozc key processing
-- `src/win32/tip/tip_text_service.cc` — text insertion helper, edit session
-  management
+**5d. Left Alt bare-press suppression** — Eat `VK_LMENU` keyup when Left
+Alt is configured, preventing Win32 menu bar activation.
 
-**Test**: Install, switch to Mozc APL. Enable "Right Ctrl" in the shifting
-key menu. Open Notepad. Hold Right Ctrl and press `a` — the APL glyph `⍺`
-(alpha) appears. Release Right Ctrl, press `a` — normal `a` appears. Test
-with Shift held: Right Ctrl + Shift + `a` → `⍶` (alpha underbar). Test
-multiple shifting keys: enable both Right Ctrl and Caps Lock, verify both
-produce glyphs independently.
+**5e. Text insertion** — TSF text insertion via `ITfInsertAtSelection`.
+Add `TipEditSession::InsertTextSync()` static method that requests a sync
+edit session calling `InsertTextAtSelection(ec, TF_IAS_NOQUERY, ...)`.
+
+APL glyphs from `apl_keymap.h` are UTF-8 `string_view`; convert to single
+`wchar_t` for TSF (all APL glyphs are BMP, no surrogate pairs needed).
+
+**New files**:
+
+| File | Role |
+|------|------|
+| `src/win32/tip/win32_apl_key_handler.h` | VK → char, shifting key check, glyph lookup |
+| `src/win32/tip/win32_apl_key_handler.cc` | Implementation |
+| `src/session/apl_keymap.h` | APL glyph table (cherry-pick or recreate from macOS/Linux) |
+| `src/session/apl_keymap.cc` | Implementation |
+
+**Files modified**:
+
+| File | Change |
+|------|--------|
+| `src/win32/tip/tip_keyevent_handler.cc` | APL intercept at top of `OnTestKey()` and `OnKey()` |
+| `src/win32/tip/tip_edit_session.h` | Add `InsertTextSync()` static method |
+| `src/win32/tip/tip_edit_session_impl.cc` | Implement sync text insertion |
+| `src/session/BUILD.bazel` | Add `apl_keymap` library rule |
+| `src/win32/tip/BUILD.bazel` | Add `win32_apl_key_handler` rule, dep on `//session:apl_keymap` |
+
+**Cross-reference of key event handler sites**:
+
+| Site | File:Line | Impact |
+|------|-----------|--------|
+| `OnTestKey` | `tip_keyevent_handler.cc:157` | **Modified**: APL intercept at top |
+| `OnKey` | `tip_keyevent_handler.cc:296` | **Modified**: APL intercept at top |
+| `OnTestKeyDown/Up/OnKeyDown/Up` | `tip_keyevent_handler.cc:474-497` | Delegate to above — no change |
+
+**Logging**:
+```
+AplLog("W5: OnTestKey VK=0x%x shift=%d shifting_held=%d", vk, shift, held);
+AplLog("W5: OnKey VK=0x%x -> base='%c' -> glyph=U+%04X", vk, base, glyph[0]);
+AplLog("W5: InsertTextSync %d chars", text.size());
+AplLog("W5: Caps Lock eaten");
+AplLog("W5: Left Alt release eaten");
+```
+
+**Test**: Enable "Right Ctrl". Notepad: hold R-Ctrl + `a` → `⍺`. Release →
+normal `a`. R-Ctrl + Shift + `a` → shifted glyph. Caps Lock: hold → glyphs,
+no LED toggle. Check log for W5 entries.
+
+---
 
 ### Step W6: Installer verification
 
 Verify the WiX installer properly registers and enables the APL profile with
 the English language ID and that glyph production works end-to-end.
 
-**Files changed**:
-- None beyond W2 changes. The installer custom actions (`RegisterTIP`,
-  `EnableTipProfile`) call into `TsfRegistrar` and `TsfProfile` which were
-  already updated in W2.
+**Files changed**: None beyond W2. The installer custom actions
+(`RegisterTIP`, `EnableTipProfile`) call into `TsfRegistrar` and
+`TsfProfile` which were already updated in W2.
 
-**Test**: Clean Windows VM. Run the MSI installer. Open Settings → Language →
-English → Keyboard. "Mozc APL" appears. Switch to Mozc APL — shifting key
-menu appears with correct checkmark state. Toggle items, restart, verify
-persistence. Enable a shifting key, open Notepad, hold the key and type —
-APL glyphs appear. Uninstall — profile removed cleanly, no orphaned registry
-entries.
+**Logging** (add to existing files):
+```
+AplLog("W6: EnableTipProfile desc=%S", desc.c_str());  // in custom_action.cc
+AplLog("W6: RegisterProfiles langid=0x%x", GetLangId());  // in tsf_registrar.cc
+```
+
+**Test**: Clean Windows VM → install MSI → "Mozc APL" in Settings → menu
+works → toggle persists → glyphs work → clean uninstall.
+
+---
+
+File Change Summary
+--------------------
+
+| Step | Files Modified | New Files |
+|------|---------------|-----------|
+| W1 | `config.proto` | — |
+| W2 | `tsf_profile.cc`, `tip_resource.rc`, `custom_action.cc`, `imm_util.cc` | — |
+| W3 | `tip_lang_bar_callback.h`, `tip_resource.h`, `tip_resource.rc`, `tip_lang_bar.h`, `tip_lang_bar.cc`, `tip_lang_bar_menu.h`, `tip_lang_bar_menu.cc`, `tip_text_service.cc`, `BUILD.bazel` (tip) | `apl_log.h` |
+| W4 | `input_state.h`, `config_snapshot.h`, `config_snapshot.cc`, `tip_private_context.cc`, `tip_text_service.cc`, `tip_lang_bar.cc`, `tip_lang_bar.h` | — |
+| W5 | `tip_keyevent_handler.cc`, `tip_edit_session.h`, `tip_edit_session_impl.cc`, `BUILD.bazel` (session + tip) | `win32_apl_key_handler.h/cc`, `apl_keymap.h/cc` |
+| W6 | (logging only) `custom_action.cc`, `tsf_registrar.cc` | — |
 
 ---
 
@@ -685,9 +771,8 @@ Open Questions (Require Experimental Testing)
 default action. Returning `eaten=TRUE` from `OnTestKeyDown` should prevent
 the Caps Lock LED and state from toggling.
 
-**Test** (W5): Register `VK_CAPITAL` as a preserved key or handle it in
-`OnTestKeyDown`. Press Caps Lock — verify the LED does not toggle and the
-key is consumed.
+**Test** (W5): Handle `VK_CAPITAL` in `OnTestKeyDown`. Press Caps Lock —
+verify the LED does not toggle and the key is consumed.
 
 ### Q2: Can the TIP distinguish L/R modifiers reliably?
 
@@ -722,30 +807,38 @@ Key Files (Windows)
 
 ### Existing files to modify
 
-| File | Role | Changes |
-|------|------|---------|
-| `src/protocol/config.proto` | Shared config proto | Add `AplShiftingKeySet` message, field 122 |
-| `src/win32/base/tsf_profile.cc` | Profile language ID | Change to `LANG_ENGLISH` |
-| `src/win32/tip/tip_resource.rc` | Display name strings | Change to "Mozc APL" |
-| `src/win32/custom_action/custom_action.cc` | Installer actions | Change `0x0411` to `0x0409` |
-| `src/win32/tip/tip_lang_bar_callback.h` | Menu item IDs | Add APL shifting key item IDs (50-54) |
-| `src/win32/tip/tip_lang_bar.h` | Language bar manager | Replace input mode button with APL shifting button |
-| `src/win32/tip/tip_lang_bar.cc` | Language bar init/update | APL shifting key menu items, checkmark semantics |
-| `src/win32/tip/tip_text_service.cc` | Main TIP class | APL menu handling in `OnMenuSelect`, text insertion helper |
-| `src/win32/base/input_state.h` | Live config state | Add APL shifting key fields to `InputBehavior` |
-| `src/win32/base/config_snapshot.h` | Startup config cache | Add APL shifting key fields to `Info` (initial load only) |
-| `src/win32/base/config_snapshot.cc` | Startup cache population | Read from `apl_shifting_key_set()` |
-| `src/win32/tip/tip_private_context.cc` | Per-context init | Copy snapshot APL fields into `InputBehavior` |
-| `src/win32/tip/tip_keyevent_handler.cc` | Key event processing | APL intercept before normal Mozc path |
+| File | Role | Step |
+|------|------|------|
+| `src/protocol/config.proto` | Shared config proto | W1 |
+| `src/win32/base/tsf_profile.cc` | Profile language ID | W2 |
+| `src/win32/tip/tip_resource.rc` | Display name + APL strings | W2, W3 |
+| `src/win32/custom_action/custom_action.cc` | Installer actions | W2, W6 |
+| `src/win32/base/imm_util.cc` | IMM profile registration | W2 |
+| `src/win32/tip/tip_lang_bar_callback.h` | Menu item IDs | W3 |
+| `src/win32/tip/tip_resource.h` | Resource string IDs | W3 |
+| `src/win32/tip/tip_lang_bar.h` | Language bar manager | W3, W4 |
+| `src/win32/tip/tip_lang_bar.cc` | Language bar init/update | W3, W4 |
+| `src/win32/tip/tip_lang_bar_menu.h` | Menu button class | W3 |
+| `src/win32/tip/tip_lang_bar_menu.cc` | Checkmark toggle | W3 |
+| `src/win32/tip/tip_text_service.cc` | Main TIP class | W3, W4 |
+| `src/win32/base/input_state.h` | Live config state | W4 |
+| `src/win32/base/config_snapshot.h` | Startup config cache | W4 |
+| `src/win32/base/config_snapshot.cc` | Startup cache population | W4 |
+| `src/win32/tip/tip_private_context.cc` | Per-context init | W4 |
+| `src/win32/tip/tip_keyevent_handler.cc` | Key event processing | W5 |
+| `src/win32/tip/tip_edit_session.h` | Edit session interface | W5 |
+| `src/win32/tip/tip_edit_session_impl.cc` | Text insertion | W5 |
+| `src/win32/base/tsf_registrar.cc` | Profile registration | W6 (logging) |
 
 ### New files
 
 | File | Role | Step |
 |------|------|------|
-| `src/win32/tip/win32_vk_to_char.h` | Win32 VK → US QWERTY char mapping | W5 |
-| `src/win32/tip/win32_vk_to_char.cc` | Implementation | W5 |
-| `src/session/apl_keymap.h` | APL glyph lookup (cherry-pick from macOS/Linux) | W5 |
-| `src/session/apl_keymap.cc` | Implementation (cherry-pick from macOS/Linux) | W5 |
+| `src/win32/tip/apl_log.h` | Debug logging utility | W3 |
+| `src/win32/tip/win32_apl_key_handler.h` | VK→char, shifting key check, glyph lookup | W5 |
+| `src/win32/tip/win32_apl_key_handler.cc` | Implementation | W5 |
+| `src/session/apl_keymap.h` | APL glyph table (shared) | W5 |
+| `src/session/apl_keymap.cc` | Implementation | W5 |
 
 ---
 
@@ -756,28 +849,9 @@ Known Risks and Mitigations
 elsewhere in the TIP code (e.g., `EnsureKanaLockUnlocked()` in `ActivateEx`,
 Japanese-specific keyboard handling in `TipKeyeventHandler`).
 
-*Mitigation*: Before changing the language ID, perform an explicit audit of
-every Japanese-specific site in `src/win32/`. Classify each as (a) already
-being changed by this POC, (b) truly harmless no-op under English, or
-(c) needs a guard or early-return to disable safely.
-
-**Audit checklist** (grep `src/win32/` for `0x0411`, `LANG_JAPANESE`,
-`VK_KANA`, `kana`, `Kana`):
-
-| Site | File | Classification |
-|------|------|----------------|
-| `kTextServiceLanguage` constant | `src/win32/base/tsf_profile.cc:74` | (a) changed to `LANG_ENGLISH` in W1 |
-| `"0x0411:"` in `InstallLayoutOrTip` | `src/win32/custom_action/custom_action.cc:327` | (a) changed to `"0x0409:"` in W1 |
-| `"0x0411:"` in `InstallLayoutOrTip` | `src/win32/base/imm_util.cc:66` | (a) changed to `"0x0409:"` in W1 |
-| `TsfProfile::GetLangId()` in `RegisterProfile`/`UnregisterProfile` | `src/win32/base/tsf_registrar.cc:193,222` | (a) reads `kTextServiceLanguage`, picks up W1 change |
-| `EnsureKanaLockUnlocked()` in `ActivateEx` and `OnSetThreadFocus` | `src/win32/tip/tip_text_service.cc:233-239,509,731` | (b) clears `VK_KANA` via `GetKeyboardState`/`SetKeyboardState` — works on all systems, no-op when kana is already unlocked |
-| `IsKanaLocked()` virtual method | `src/win32/base/keyboard.h:128`, `keyboard.cc:90` | (b) returns false on English keyboards — no effect |
-| `IsPressed(VK_KANA)` in modifier index | `src/win32/base/keyboard.cc:1324` | (b) never pressed on English keyboards — no effect |
-| Hiragana/Katakana conversion modes | `src/win32/base/conversion_mode_util.cc` | (b) language-agnostic logic, no language ID check |
-
-No category (c) sites have been identified. All Japanese-specific code
-either gets updated by the language ID change (a) or is a genuine no-op
-under English (b). Dead code cleanup is deferred to post-POC.
+*Mitigation*: See the exhaustive audit table in W2 above. All Japanese-specific
+sites either get updated by the language ID change or are genuine no-ops under
+English. No category (c) sites requiring guards have been identified.
 
 **Risk**: `ConfigSnapshot::Get()` is a `static const` one-shot cache — it
 cannot reflect config changes made after startup.
@@ -789,8 +863,6 @@ It reads `InputBehavior`, a mutable per-context struct owned by
 the handler updates `InputBehavior` directly — the new value is already
 known (it was just toggled), so no IPC round-trip or cache refresh is
 needed. `SetConfig` persists the change to disk for cross-restart durability.
-This mirrors the macOS approach where ivars are updated immediately after
-`SetConfig`.
 
 **Risk**: The Mozc server may not be running when the APL profile is
 activated (e.g., server crashed or was not started).
@@ -799,20 +871,13 @@ activated (e.g., server crashed or was not started).
 shows unchecked items as default. The broker auto-restarts the server.
 
 **Risk**: Caps Lock is a toggle key on Windows — pressing it changes
-persistent LED state. When used as an APL shifting key, the key intercept
-in W5 must handle this.
+persistent LED state.
 
-*Design note (W5)*: The APL key intercept reads toggle state via
-`GetKeyState(VK_CAPITAL) & 0x0001` (LED on = APL shift active), not the
-`IsPressed(VK_CAPITAL)` check that the existing keyevent handler uses
-(line 431 of `keyevent_handler.cc`). The POC lets the LED toggle freely
-and uses it as a visual indicator — the user turns Caps Lock on to enter
-APL shifting mode and off when done. Eating `VK_CAPITAL` to suppress
-the toggle is deferred as a refinement. The intercept must happen before
-`TipKeyeventHandler` processes the key, since the existing handler at
-`keyevent_handler.cc:460` would otherwise forward `VK_CAPITAL` to the
-Mozc server as `KeyEvent::CAPS`. Note: Caps Lock was abandoned as a
-shifting key option on the macOS branch; however it is actively used on
-Windows via Kanata and must work in this POC.
+*Mitigation*: The APL key intercept eats `VK_CAPITAL` in `OnTestKeyDown`
+(returning `eaten=TRUE`) to suppress the toggle. Uses `& 0x8000` (key
+currently pressed) for detection, not `& 0x0001` (toggle state). The
+intercept runs before `TipKeyeventHandler` processes the key, preventing
+the existing handler at `keyevent_handler.cc:460` from forwarding
+`VK_CAPITAL` to the Mozc server as `KeyEvent::CAPS`.
 
 
