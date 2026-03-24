@@ -10,7 +10,7 @@ Mozc Overview
 -------------
 
 Mozc is an open-source Japanese Input Method Editor (IME) originally derived
-from Google Japanese Input. It runs on Linux, macOS, Windows, and Android.
+from Google Japanese Input. It runs on Linux, macOS, and Windows.
 
 ### Architecture
 

@@ -114,12 +114,4 @@ Fetched by Bazel:
 | **All platform toolchains** | Visual Studio, LLVM, MSYS2, Ninja, Xcode, CMake, GCC, .NET, WiX, and WIL are all required for their respective platforms regardless of the IME's target language. |
 
 ## Licensing
-The mozc project and its dependencies are made available under a variety of licences.
-
-FIXME determine what the license implications are for:
-- developing as an open source fork
-- developing as a closed source fork
-- distributing installers
-  - on GitHub or our website
-  - in package managers
-  - inside Dyalog installers
+The mozc project and its dependencies are made available under a variety of licences. See `docs/project-licensing.md` for a full analysis of licence obligations for fork distribution.

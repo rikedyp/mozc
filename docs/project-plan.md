@@ -88,8 +88,9 @@ best patterns from each:
 - Windows: `GetKeyState(VK_*)` left/right distinction pattern
 
 ### 0.3 Remove Japanese-specific data and code
-- Delete Japanese dictionary data, usage dictionary, and zip code data
-  from the build and `MODULE.bazel`
+- Delete Japanese dictionary data (including IPAdic / NAIST dictionary
+  and Tamachi Phonetic Kanji), usage dictionary, and zip code data from
+  the build and `MODULE.bazel`
 - Remove romaji-to-kana preedit tables from `src/data/preedit/`
 - Remove Japanese keymap tables from `src/data/keymap/`
 - Strip Japanese input modes (Hiragana, Katakana, Half-width, etc.) from
@@ -119,8 +120,9 @@ best patterns from each:
 - Remove Japanese Usage Dictionary and Japan Post zip code data from
   `MODULE.bazel`
 - Drop Android NDK fetch from `update_deps.py` (desktop-only product)
-- Remove Google Toolbox for Mac if macOS ObjC tests are rewritten or
-  dropped
+- Rewrite macOS ObjC tests to remove dependency on Google Toolbox for
+  Mac's UnitTesting component (keep Google Toolbox for Mac as a test
+  framework dependency)
 - Replace Material Design Icons with APL-relevant icons
 
 ### 0.5 Rebrand and re-register
@@ -339,23 +341,24 @@ and expression completion.
 ### Remove
 | Dependency | Phase |
 |---|---|
-| Japanese Usage Dictionary | 0.2 |
-| Japan Post zip code data | 0.2 |
-| Android NDK (default fetch) | 0.3 |
-| Google Toolbox for Mac | 0.3 |
-| All GYP git submodules | 0.3 |
+| Japanese Usage Dictionary | 0.3 |
+| Japan Post zip code data | 0.3 |
+| IPAdic / NAIST dictionary | 0.3 |
+| Tamachi Phonetic Kanji | 0.3 |
+| Android NDK (default fetch) | 0.4 |
+| All GYP git submodules | 0.4 |
 
 ### Replace
 | Dependency | Replacement | Phase |
 |---|---|---|
-| Material Design Icons | APL-specific icons | 0.3 |
+| Material Design Icons | APL-specific icons | 0.4 |
 | Japanese preedit tables | APL prefix/overstrike tables | 2.1, 3.1 |
-| Japanese keymap tables | APL keymap tables | 0.2 |
+| Japanese keymap tables | APL keymap tables | 0.3 |
 
 ### Keep
-abseil-cpp, protobuf, googletest, Bazel + all rulesets, Qt6, IBus,
-platform toolchains (MSVC/LLVM/Xcode/GCC), WiX, WIL, rules_apple
-ecosystem.
+abseil-cpp, protobuf, googletest, Google Toolbox for Mac, Bazel + all
+rulesets, Qt6, IBus, platform toolchains (MSVC/LLVM/Xcode/GCC), WiX,
+WIL, rules_apple ecosystem.
 
 ---
 

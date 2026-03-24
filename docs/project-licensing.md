@@ -13,8 +13,6 @@ These dependencies require that copyright notices and licence text are reproduce
 | protobuf | BSD 3-Clause | No endorsement by Google without permission |
 | Material Design Icons | Apache 2.0 | Will be replaced with APL icons, but same licence applies |
 | WIL (Windows only) | MIT | Copyright + permission notice |
-| IPAdic / NAIST dictionary | NAIST + ICOT | Must include "NO WARRANTY" text |
-| Tamachi Phonetic Kanji | MIT | Copyright + permission notice |
 | googletest | BSD 3-Clause | Test-only — not present in distributed binaries |
 
 The existing `src/data/installer/credits_en.html` bundles all upstream notices. The APL edition should maintain an equivalent file adapted to its actual dependency set.
