@@ -63,7 +63,7 @@ bool ImeUtil::SetDefault() {
     return E_OUTOFMEMORY;
   }
 
-  const std::wstring profile = StrCatW(L"0x0411:", clsid, profile_id);
+  const std::wstring profile = StrCatW(L"0x0409:", clsid, profile_id);
   if (!::InstallLayoutOrTip(profile.c_str(), 0)) {
     DLOG(ERROR) << "InstallLayoutOrTip failed";
     return false;
@@ -88,9 +88,9 @@ bool ImeUtil::SetDefault() {
       return false;
     }
   }
-  const LANGID kLANGJaJP = MAKELANGID(LANG_JAPANESE, SUBLANG_JAPANESE_JAPAN);
+  const LANGID kLANGEnUS = MAKELANGID(LANG_ENGLISH, SUBLANG_ENGLISH_US);
   if (FAILED(profile_mgr->ActivateProfile(
-          TF_PROFILETYPE_INPUTPROCESSOR, kLANGJaJP,
+          TF_PROFILETYPE_INPUTPROCESSOR, kLANGEnUS,
           TsfProfile::GetTextServiceGuid(), TsfProfile::GetProfileGuid(),
           nullptr, TF_IPPMF_FORPROCESS | TF_IPPMF_FORSESSION))) {
     DLOG(ERROR) << "ActivateProfile failed";

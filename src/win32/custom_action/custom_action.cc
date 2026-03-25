@@ -324,8 +324,8 @@ UINT __stdcall EnableTipProfile(MSIHANDLE msi_handle) {
     return ERROR_SUCCESS;
   }
 
-  // 0x0411 == MAKELANGID(LANG_JAPANESE, SUBLANG_JAPANESE_JAPAN)
-  const auto desc = ::mozc::win32::StrCatW(L"0x0411:", clsid, profile_id);
+  // 0x0409 == MAKELANGID(LANG_ENGLISH, SUBLANG_ENGLISH_US)
+  const auto desc = ::mozc::win32::StrCatW(L"0x0409:", clsid, profile_id);
 
   // Do not care about errors.
   ::InstallLayoutOrTip(desc.c_str(), 0);
