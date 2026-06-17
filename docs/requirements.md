@@ -5,8 +5,8 @@ External-design requirements for the Dyalog APL IME, derived from the approved u
 **Conventions:**
 
 - Requirements are platform-agnostic unless a platform is named.
-- “Supported platforms” means Microsoft Windows, macOS (ARM), Ubuntu GNOME Wayland, Fedora GNOME Wayland, and Raspberry Pi (recent Raspbian). Other Linux desktop environments are explicitly Nice-to-have where they appear.
-- “Standard text input framework” means the input method framework the host OS provides for third-party IMEs (TSF on Windows, the macOS input method system, ibus/fcitx5-style frameworks on Linux). Apps that bypass this framework are out of scope by construction.
+- “Supported platforms” means Microsoft Windows, macOS (ARM), Ubuntu X11 (XFCE), Ubuntu GNOME Wayland, Fedora GNOME Wayland, and Raspberry Pi (recent Raspbian). macOS (Intel) is Stretch. Other Linux desktop environments are explicitly Nice-to-have where they appear.
+- “Standard text input framework” means the input method framework the host OS provides for third-party IMEs (TSF on Windows, the macOS input method system, ibus/fcitx5-style frameworks on Linux). On Linux, **ibus** is the v1 target framework; **fcitx5** support is Stretch. Apps that bypass this framework are out of scope by construction.
 - Requirements describe user-visible behaviour only. Internal robustness, reliability, and implementation concerns are out of scope at this stage.
 
 ### Installation, presentation, and platform support
@@ -36,7 +36,7 @@ External-design requirements for the Dyalog APL IME, derived from the approved u
   - Linux: LCtrl, LAlt, RCtrl, RAlt _(Essential)_. Caps, LShift, RShift, LWin, RWin _(Stretch)_
   - macOS: option (alt), cmd _(Essential)_
 - Prefix keys: Any key that can produce output can be configured as prefix key on any platform _(Essential)_
-- Activate keyword search / APLCart: _(Stretch)_ any valid shortcut combination for the
+- Activate keyword search / APLCart: any valid shortcut combination can be configured to trigger it _(Stretch)_.
 
 **R10. Consent required before binding to system-reserved keys.** _(Nice-to-have)_ If the user attempts to bind the switching key to a key reserved by the host OS or desktop environment (Alt, Super, Cmd, Win, etc.), the IME prompts for explicit confirmation before applying the binding if possible.
 
@@ -77,7 +77,7 @@ External-design requirements for the Dyalog APL IME, derived from the approved u
 
 ### Remote sessions
 
-**R25. Common terminal emulator coverage.** _(Essential)_ R25 works in the common terminal emulators on each supported platform: PuTTY and Windows Terminal on Windows; Terminal.app and iTerm2 on macOS; GNOME Terminal, Konsole, and xterm on Linux.
+**R25. Common terminal emulator coverage.** _(Essential)_ APL glyph input works in the common terminal emulators on each supported platform: PuTTY and Windows Terminal on Windows; Terminal.app and iTerm2 on macOS; GNOME Terminal, Konsole, and xterm on Linux.
 
 **R26. IDE keyboard shortcuts.** _(Nice-to-have)_ The IME can produce special codes for keyboard shortcuts such as Ctrl+Enter and Ctrl+Shift+Backspace (full list to be enumerated in implementation plan in project repository).
 
