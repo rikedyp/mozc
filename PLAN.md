@@ -60,11 +60,11 @@ interactive IME (no desktop session, no text-services bus):
   across Wayland-native, XWayland, and X11 applications**, so the main
   interactive-test ground is **two VMs chosen for display-server + distro
   variety**:
-    - **Xubuntu** (XFCE / **X11**) — covers native X11 apps.
-    - **Fedora GNOME** (**Wayland**) — covers native Wayland apps *and* XWayland
-      apps running under the Wayland session.
-  Build *natively in each VM* (avoids container↔VM library skew and also exercises
-  Debian-family vs. Fedora build portability); sync source via git.
+  - **Xubuntu** (XFCE / **X11**) — covers native X11 apps.
+  - **Fedora GNOME** (**Wayland**) — covers native Wayland apps _and_ XWayland
+    apps running under the Wayland session.
+    Build _natively in each VM_ (avoids container↔VM library skew and also exercises
+    Debian-family vs. Fedora build portability); sync source via git.
 - **Windows/TSF — at milestones (parity checks).** Build and test natively on the
   **Windows host** (the developer's own machine, and Dyalog's primary end-user
   platform) at milestone boundaries to confirm parity. Separate clone, native
@@ -74,7 +74,7 @@ interactive IME (no desktop session, no text-services bus):
   major milestones to validate the InputMethodKit front-end.
 
 > **Deferred platform — fcitx5 (much later).** A Linux fcitx5 front-end is a
-> possible *future* platform (greenfield — absent from the mozc tree; see
+> possible _future_ platform (greenfield — absent from the mozc tree; see
 > [`REWRITE.md`](REWRITE.md) §2.4 / §6 Q6). It is **explicitly not under
 > consideration now** — not part of v1 or the near-term milestones — and is
 > recorded here only so it isn't forgotten. To be scoped only much later, if pursued.
@@ -87,7 +87,7 @@ interactive IME (no desktop session, no text-services bus):
 story differs from X11's (GTK apps work well with ibus; XWayland apps can behave
 differently again), so all three paths — **Wayland-native, XWayland, and X11** —
 must be tested deliberately. The Xubuntu + Fedora-GNOME pair covers the matrix.
-Note: CI still runs on `ubuntu-24.04` as the canonical *build* reference; the test
+Note: CI still runs on `ubuntu-24.04` as the canonical _build_ reference; the test
 VMs are chosen for runtime display-server/distro variety, not build parity.
 
 ### Checklist
@@ -96,8 +96,10 @@ VMs are chosen for runtime display-server/distro variety, not build parity.
       the Linux VM and the Windows host. → [`docs/local_build_and_test.md`](docs/local_build_and_test.md)
 - [x] Write a short local build & run guide (`docs/`) covering both environments
       and the inner/outer loop split. → [`docs/local_build_and_test.md`](docs/local_build_and_test.md)
-- [ ] Get a clean baseline mozc build + tests passing — headless in the container,
-      then in each Linux VM, then on the Windows host.
+- [~] Get a clean baseline mozc build + tests passing — headless in the container,
+      then in each Linux VM, then on the Windows host. **Container: green** —
+      `base/...` + `composer/...` build + 55/55 tests pass (Bazel 9.0.2, GCC 12.2).
+      VMs + Windows host still pending.
 - [ ] Stand up the two Linux VMs (Xubuntu/X11 + Fedora GNOME/Wayland, both with
       ibus) and a Windows-host clone.
 - [ ] Verify the IME under all three display-server paths: Wayland-native,
@@ -113,3 +115,9 @@ VMs are chosen for runtime display-server/distro variety, not build parity.
 - [ ] Add automatic creation of **draft releases** with build artifacts attached.
 - [ ] Verify per-platform artifacts publish correctly to the draft release.
 - [ ] Document the release process.
+
+## 5. Adapt README to explain intention of the fork
+
+- [ ] Link back to mozc project as original work from which this derives, but state the fork will become detached
+- [ ] Include some information about current state of APL glyph input, including links to the APL Wiki and Dyalog website
+- [ ] Note intentional restrictions, and link to Kanata for a highly configurable cross-platform option
