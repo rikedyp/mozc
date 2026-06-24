@@ -129,7 +129,7 @@ Effort is rough: **S** ≤ a few days, **M** ≈ 1–3 weeks, **L** ≈ 1 month+
 | Component | Disposition | Rationale | Effort |
 |----------|-------------|-----------|--------|
 | `src/composer/` (`table.*`, `composition.*`, `char_chunk.*`) | **Keep core, adapt selection** | The single highest-value asset (§1). Keep the trie/loader as-is; adapt only `Table::InitializeWithRequestAndConfig` (`table.cc:143-316`, Japanese punctuation/table selection). Discard kana transliterators / `mode_switching_handler`. | S–M |
-| `src/session/`, `ime_context` | **Adapt** | Keep the key-routing skeleton and the `DIRECT_INPUT` commit path; strip kana/conversion command handling and the Hiragana/Katakana mode states from `session.cc`; replace the input-mode enum (§1 caveat). | M |
+| `src/session/`, `ime_context` | **Adapt** | Keep the key-routing skeleton and the `DIRECT_INPUT` commit path. Strip the **kana-mode conversions** (`ConvertToHiragana`/`CompositionMode*`/full-half-width, `session.h:182-209`) and the Hiragana/Katakana mode states; replace the input-mode enum (§1 caveat). **Retain the candidate-list selection path** (`Convert`/`ConvertNext`/`ConvertPrev`/`CommitCandidate`/`SegmentFocus*`, `session.h:146-176`) — it is the reusable substrate for the R14 keyword search and R17 idiom discovery surfaces (the *engine* behind it is discarded and new-built per §2.5; the selection plumbing + renderer candidate window are kept). For v1's core glyph path the candidate path is simply idle. | M |
 | `src/session/keymap` | **Adapt (data)** | Reuse the keymap mechanism for *mode/command* keys (not glyph emission). Rewrite the Japanese keymap TSVs (`data/keymap/*`) to a small APL set. | S |
 | `src/config/` + `config.proto` | **Adapt** | `config_handler` depends only on base+proto — trivially extensible. Add `SwitchingModel` + `switching_key` + APL-table fields (precedent: `custom_roman_table`, `config.proto:142`). Ignore/strip kana/dictionary/suggest blocks over time. Drives R8/R9. | S |
 | `src/request/` | **Keep proto, slim** | Use `commands::Request`; drop/slim `conversion_request.h` to sever the prediction/dictionary leak (§1 caveat). | S |
@@ -227,9 +227,11 @@ scheduled merges would be almost entirely conflicts in code we don't keep, for
 near-zero benefit.
 
 **How we relate to upstream instead:**
-- **Pin provenance.** Record the exact upstream commit/version this fork derives
-  from (current baseline: mozc **3.33.6133.100**, `src/version.bzl`). *(Open
-  question Q10 — capture the precise upstream SHA.)*
+- **Pin provenance.** This fork derives from upstream mozc commit
+  **`988fbca7744f278c74eabe59085be2e255194b19`** (Hiroyuki Komatsu, 2026-06-16,
+  "Refactor SystemUtil::GetOSVersionString…") — the last upstream commit before
+  the APL work begins on this branch. Baseline version: mozc **3.33.6133.100**
+  (`src/version.bzl`). *(Resolves Q10.)*
 - **Keep an `upstream` remote for reference only** — never merged on a cadence.
 - **Opportunistic, targeted cherry-picks.** Periodically (low cadence, manual)
   scan upstream for fixes in the *subsystems we keep* — `win32/tip`, `unix/ibus`,
@@ -331,12 +333,14 @@ specifics in step 5 feed **M2 (Windows parity)**.
 
 ## 6. Open questions for sign-off
 
-1. **Session reuse depth (design).** v1 recommendation is to reuse mozc's
-   session/composer wholesale (APL behaviour as data + minimal C++) and strip kana
-   modes incrementally, rather than invest early in a slimmer session. Confirm.
-2. **Held-modifier implementation locus (design).** Fold the active modifier into
-   the composer lookup token (recommended) vs. a pre-composer transform. Confirm
-   before M1.
+1. **Session reuse depth (design).** **RESOLVED.** Reuse mozc's session/composer
+   wholesale (APL behaviour as data + minimal C++); keep the candidate-list
+   selection path as the substrate for R14/R17 (§2.2); strip only the kana-mode
+   conversions incrementally. Not investing early in a slimmer session.
+2. **Held-modifier implementation locus (design).** **OPEN — revisit before M1.**
+   Candidates: fold the active modifier into the composer lookup token
+   (recommended) vs. a pre-composer transform. Deferred while build pipelines are
+   set up; not needed until the M1 glyph-input work begins.
 3. **R11 layout design reference (informs M2).** The existing official Dyalog
    IME maps (e.g. `.din` files) are the **source of information for how the APL
    layouts should be *designed*** — the authoritative reference for which glyphs
@@ -347,13 +351,16 @@ specifics in step 5 feed **M2 (Windows parity)**.
    not import, embed, or mechanically translate the `.din` files into the build.
    A spike to read the existing maps and extract the intended layout design is
    needed during M2.
-4. **Engine stub strategy.** Confirm the purpose-built no-op `EngineConverter`
-   (recommended) over reusing `EngineConverter`+`MinimalConverter`.
+4. **Engine stub strategy.** **RESOLVED.** Purpose-built no-op `EngineConverter`
+   (~50 mostly no-op methods; commit via the composer `DIRECT_INPUT` path, not
+   `Convert`), rather than reusing `EngineConverter`+`MinimalConverter`.
 5. **R14/R15 UI build (Should/Stretch).** Keyword search reuses the renderer
    candidate list cheaply; the popup keyboard map needs a new surface. Defer
    detailed design; flag as the least-reuse UI items.
-6. **fcitx5 (Stretch).** Confirmed greenfield (absent from the tree); scope only
-   if/when pursued.
+6. **fcitx5 (Stretch — much later).** Confirmed greenfield (absent from the
+   tree). **Explicitly out of scope for now**; not under consideration during v1
+   or the near-term milestones. Recorded here and in PLAN.md as a deliberately
+   deferred future platform, to be scoped only much later if/when pursued.
 7. **Primary dev/test platform (PLAN.md §3).** **RESOLVED.** Linux/ibus is the
    primary interactive-test target, on **two VMs for display-server variety** —
    Xubuntu (X11) and Fedora GNOME (Wayland + XWayland), every iteration; working
@@ -363,14 +370,18 @@ specifics in step 5 feed **M2 (Windows parity)**.
    (CI remains `ubuntu-24.04` as the canonical build reference). Headless
    `bazel test` runs in the dev container as the inner loop. See PLAN.md §3
    "Decisions — environments & feedback loop".
-8. **`commands.proto`/`config.proto` trimming policy.** Keep unused Japanese
-   messages/fields indefinitely (lowest risk) or prune on a schedule? Recommend
-   keep-and-ignore short-term, prune opportunistically.
+8. **`commands.proto`/`config.proto` trimming policy.** **RESOLVED — prune on a
+   schedule.** Unused Japanese conversion-oriented messages/fields are removed on
+   a defined cadence (not kept indefinitely). Scheduling the prune passes is part
+   of the migration/CI planning; until each pass, unused messages may remain but
+   are tracked for removal rather than left forever.
 9. **User-dictionary scaffolding.** Discard the dictionary GUI for v1 (agreed);
    confirm we are *not* preserving its file-I/O/storage scaffolding for a future
    feature, or note it for later reuse.
-10. **Upstream provenance SHA.** Record the exact upstream mozc commit this fork
-    derives from (baseline version 3.33.6133.100), to anchor §3.2 cherry-picks.
+10. **Upstream provenance SHA.** **RESOLVED.** Fork derives from upstream commit
+    `988fbca7744f278c74eabe59085be2e255194b19` (last upstream commit before the
+    APL work on this branch; baseline version 3.33.6133.100). Recorded in §3.2 to
+    anchor cherry-picks.
 
 ---
 

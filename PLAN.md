@@ -73,6 +73,12 @@ interactive IME (no desktop session, no text-services bus):
 - **macOS — at less-frequent milestones.** Borrow/obtain access to a Mac (ARM) at
   major milestones to validate the InputMethodKit front-end.
 
+> **Deferred platform — fcitx5 (much later).** A Linux fcitx5 front-end is a
+> possible *future* platform (greenfield — absent from the mozc tree; see
+> [`REWRITE.md`](REWRITE.md) §2.4 / §6 Q6). It is **explicitly not under
+> consideration now** — not part of v1 or the near-term milestones — and is
+> recorded here only so it isn't forgotten. To be scoped only much later, if pursued.
+
 > **Build pipeline targets the two Linux VMs (Xubuntu/X11 and Fedora GNOME/Wayland)
 > and the Windows host from the outset.** Linux is the day-to-day driver; Windows
 > is validated at milestones; macOS least frequently.
@@ -86,17 +92,17 @@ VMs are chosen for runtime display-server/distro variety, not build parity.
 
 ### Checklist
 
-- [ ] Document toolchain prerequisites (Bazel/bazelisk, platform SDKs) for **both**
-      the Linux VM and the Windows host.
-- [ ] Stand up the two Linux VMs (Xubuntu/X11 + Fedora GNOME/Wayland, both with
-      ibus) and a Windows-host clone.
+- [x] Document toolchain prerequisites (Bazel/bazelisk, platform SDKs) for **both**
+      the Linux VM and the Windows host. → [`docs/local_build_and_test.md`](docs/local_build_and_test.md)
+- [x] Write a short local build & run guide (`docs/`) covering both environments
+      and the inner/outer loop split. → [`docs/local_build_and_test.md`](docs/local_build_and_test.md)
 - [ ] Get a clean baseline mozc build + tests passing — headless in the container,
       then in each Linux VM, then on the Windows host.
+- [ ] Stand up the two Linux VMs (Xubuntu/X11 + Fedora GNOME/Wayland, both with
+      ibus) and a Windows-host clone.
 - [ ] Verify the IME under all three display-server paths: Wayland-native,
       XWayland, and X11.
 - [ ] Apply any build-system changes implied by section 2.
-- [ ] Write a short local build & run guide (`docs/`) covering both environments
-      and the inner/outer loop split.
 - [ ] Confirm an edit → build → run → test loop works end to end (Linux first).
 
 ## 4. GitHub Actions pipeline (versioning + draft releases)
