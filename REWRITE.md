@@ -1,14 +1,17 @@
 # Refactor vs. Rewrite Assessment
 
-This document is the work product of **[PLAN.md](PLAN.md) step 2**. It inventories
+This document is the work product of **[PLAN.md](PLAN.md) §2** (Phase 0). It inventories
 the upstream **mozc** codebase, decides per component whether to **keep / adapt /
-discard / rewrite**, settles the strategic questions (refactor-existing vs. fresh
-project, upstream tracking, divergence risk, build-pipeline impact), and defines
-the migration approach.
+discard / rewrite**, and settles the strategic questions (refactor-existing vs.
+fresh project, upstream tracking, divergence risk, build-pipeline impact).
+
+This document is the **rationale** for the rewrite — the *why*. The *what and
+when* — the step-by-step migration sequence — lives in [`PLAN.md`](PLAN.md) under
+**Migration**. The component dispositions below (§2) are what those steps act on.
 
 It builds directly on
 [`docs/requirements-assessment.md`](docs/requirements-assessment.md) (PLAN.md
-step 1), which classified the requirements and gave each a *preliminary* mozc tag
+§1), which classified the requirements and gave each a *preliminary* mozc tag
 (reuse / adapt / new-build). This document is where those preliminary tags become
 **definitive component decisions**, grounded in the actual dependency graph rather
 than the surface-level code split in the original planning notes.
@@ -122,7 +125,7 @@ Effort is rough: **S** ≤ a few days, **M** ≈ 1–3 weeks, **L** ≈ 1 month+
 | `src/storage/` | **Keep generics, discard `louds/`** | Keep `lru_storage`, `encrypted_string_storage`, `existence_filter` (the KV/secret primitives behind R36 config-persistence). `louds/` is used only by the discarded dictionary. | S |
 | `src/testing/` | **Keep** | Generic gtest/gmock harness. | — |
 | `src/protocol/` | **Keep, trim opportunistically** | `commands.proto` / `config.proto` are the IO currency of the whole pipeline. Conversion-oriented messages simply go unused; don't rewrite. | S (additive) |
-| Bazel toolchain (`MODULE.bazel`, `.bazeliskrc`, `bazel/`, generic `build_tools/`) | **Keep** | Modern Bazel 9.0.2 + abseil/protobuf/googletest/Qt/ibus/WiX. See §4. | — |
+| Bazel toolchain (`MODULE.bazel`, `.bazeliskrc`, `bazel/`, generic `build_tools/`) | **Keep** | Modern Bazel 9.0.2 + abseil/protobuf/googletest/Qt/ibus/WiX. See §3.4. | — |
 
 ### 2.2 Reusable IME core — **ADAPT**
 
@@ -264,7 +267,7 @@ risk: **low and accepted.**
   (`server/BUILD.bazel:107`, `session/BUILD.bazel:97`, `engine/BUILD.bazel:48`)
   means all three desktop `package` targets won't build until the engine/session
   core is replaced — this *is* the central implementation work, and dictates the
-  migration sequencing in §4.
+  migration sequencing (see [`PLAN.md`](PLAN.md) Migration).
 - **Drop mobile build deps** (§2.6): `rules_android`, `rules_go`, `gazelle`, NDK.
 - **`version.bzl`:** drop `ENGINE_VERSION` / `DATA_VERSION` (meaningless without
   bundled data); keep `MAJOR`/`MINOR`/`BUILD`/`REVISION` as the release source of
@@ -276,45 +279,18 @@ risk: **low and accepted.**
 
 ---
 
-## 4. Migration approach — strangler, keep it green
+## 4. Migration approach — see PLAN.md
 
-The guiding principle: **insert the APL seam before deleting Japanese code**, so a
-working IME exists at (almost) every step rather than a long red-build period. The
-one unavoidable red window is between switching the engine factory and finishing
-the APL converter — kept as short as possible.
+The step-by-step migration sequence has moved to its proper home, the
+**[`PLAN.md`](PLAN.md) Migration** section, so that the *what/when* lives with the
+linear development plan and this document stays focused on the *why*.
 
-1. **Baseline & provenance.** Pin the upstream commit (Q10); set up the
-   `upstream` reference remote; **get a clean baseline mozc build + tests green
-   locally first** (this is PLAN.md §3's first task and the known-good reference
-   for everything after). Pick the primary dev/test platform (recommend Linux/ibus
-   — strongest reuse, fastest loop; validate macOS-ARM early as a risk, see §5).
-2. **Insulate the seam.** Add an APL `EngineInterface`/`EngineConverterInterface`
-   implementation (initially passthrough/no-op); replace
-   `transliteration::TransliterationType` with an APL `InputMode`; slim
-   `ConversionRequest` to drop the prediction/dictionary leak. Build stays green.
-3. **Strangle the Japanese stack.** Point the engine factory at the APL engine;
-   once nothing references them, delete converter / dictionary / prediction /
-   rewriter / transliteration-logic / data / data_manager / storage-louds plus
-   their genrules and `MODULE.bazel` archives. Keep the storage generics.
-4. **Author APL behaviour as data.** Composer-table TSV(s) for glyph maps; keymap
-   TSV(s) for mode/command keys; wire the `SwitchingModel` + `switching_key`
-   config fields. Implement the held-modifier token-folding in the composer
-   (the one piece of new switching C++).
-5. **Adapt session & platform semantics.** Strip kana composition modes from
-   `session.cc`; retarget each platform's mode model (win32 `tsf_profile`
-   LANGID/GUID + mode manager; mac `ComponentInputModeDict`; ibus
-   `property_handler`/`key_translator`).
-6. **Rebrand.** Centralise product identity (`config.bzl` + `const.h`);
-   regenerate Windows CLSID/GUIDs, macOS bundle ids, ibus component id; drop `_ja`
-   translations; retire the `GOOGLE_JAPANESE_INPUT_BUILD` toggle.
-7. **Trim build/CI & rebuild tests.** Delete `android/`, `ios/`, `android.yaml`,
-   and mobile `MODULE.bazel` deps. Rewrite the session/handler/regression tests
-   (which currently depend on the Japanese mocks) against the APL engine — planned
-   work, not an afterthought.
-
-This maps onto the requirements-assessment milestones: steps 1–3 unblock **M0
-(Foundations)**; steps 4–5 deliver **M1 (Core glyph input)**; the Windows
-specifics in step 5 feed **M2 (Windows parity)**.
+The guiding principle it encodes: **insert the APL seam before deleting Japanese
+code**, so a working IME exists at (almost) every step rather than through a long
+red-build period — and **author + validate APL behaviour before the irreversible
+strangle** (test before strangle). The component dispositions that the sequence
+acts on are §2 above; the strategic decisions that shape it are §3; the risks it
+must manage are §5.
 
 ---
 
@@ -323,9 +299,9 @@ specifics in step 5 feed **M2 (Windows parity)**.
 | Risk | Severity | Mitigation |
 |------|----------|------------|
 | **Windows Japanese LANGID** (`tsf_profile.cc:74`) and full/half-width mode model thread through registration + UI; loading an English-locale APL profile needs care. | High (Win) | Prototype TSF registration with English LANGID + new GUIDs early in M0/M2. |
-| **macOS input-mode model** (`ComponentInputModeDict`) is pervasively Japanese and drives input-menu appearance; **ARM is untested** (no arch-specific code, but no ARM evidence). | Med (mac) | Validate a minimal APL `Info.plist` mode set on Apple-Silicon early (step 1/5). |
+| **macOS input-mode model** (`ComponentInputModeDict`) is pervasively Japanese and drives input-menu appearance; **ARM is untested** (no arch-specific code, but no ARM evidence). | Med (mac) | Validate a minimal APL `Info.plist` mode set on Apple-Silicon early (see PLAN.md Migration — baseline and platform-semantics steps). |
 | **Engine stub breadth** — `EngineConverterInterface` is ~50 methods. | Med | Purpose-built no-op APL converter; commit via the composer `DIRECT_INPUT` path, not `Convert`. |
-| **Test rebuild** — session/handler/regression tests depend on Japanese mocks. | Med | Treat as first-class migration work (step 7); rebuild against the APL engine. |
+| **Test rebuild** — session/handler/regression tests depend on Japanese mocks. | Med | Treat as first-class migration work (PLAN.md Migration — trim build/CI & rebuild tests); rebuild against the APL engine. |
 | **Forgoing upstream auto-fixes** (security/platform) after hard-fork. | Low | Targeted cherry-pick process (§3.2); kept subsystems are mature. |
 | **R15 popup keyboard map** has the least renderer reuse (list-only drawing). | Low (Stretch) | New window type or standalone overlay; deferred (M7). |
 
